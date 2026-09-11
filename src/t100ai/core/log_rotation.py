@@ -1,7 +1,7 @@
 """Log rotation for T-100AI's log files.
 
 Provides automatic log rotation with numbered backups and gzip compression.
-Handles specter.log, audit.log, permissions.log, and any other log files.
+Handles t100ai.log, audit.log, permissions.log, and any other log files.
 """
 
 from __future__ import annotations
@@ -18,9 +18,9 @@ class LogRotator:
     """Rotates log files when they exceed a configurable size threshold.
 
     Rotation scheme:
-        specter.log -> specter.log.1 (uncompressed, most recent)
-        specter.log.1 -> specter.log.2.gz
-        specter.log.2.gz -> specter.log.3.gz
+        t100ai.log -> t100ai.log.1 (uncompressed, most recent)
+        t100ai.log.1 -> t100ai.log.2.gz
+        t100ai.log.2.gz -> t100ai.log.3.gz
         ... up to max_backups
     """
 
@@ -189,7 +189,7 @@ class RotatingFileHandler:
 
     Usage::
 
-        handler = RotatingFileHandler("logs/specter.log", max_size_mb=50)
+        handler = RotatingFileHandler("logs/t100ai.log", max_size_mb=50)
         handler.write("some log line\\n")
         handler.flush()
     """
@@ -257,7 +257,7 @@ def setup_rotating_logs(log_dir: str = "logs") -> None:
     """Create *log_dir* and set up auto-rotation for the standard log files.
 
     Starts background rotation threads for:
-        - specter.log
+        - t100ai.log
         - audit.log
         - permissions.log
     """

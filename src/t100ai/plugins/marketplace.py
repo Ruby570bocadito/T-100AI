@@ -13,7 +13,7 @@ from typing import Any, Optional
 
 logger = logging.getLogger("t100ai.marketplace")
 
-DEFAULT_REGISTRY_URL = "https://specter-plugins.example.com/api/v1"
+DEFAULT_REGISTRY_URL = "https://plugins.t100ai.example.com/api/v1"
 
 
 @dataclass
@@ -94,7 +94,7 @@ class PluginMarketplace:
                 f"version: {plugin.version}\n"
                 f"description: {plugin.description}\n"
                 f"author: {plugin.author}\n"
-                f"min_specter_version: '1.0.0'\n"
+                f"min_t100ai_version: '1.0.0'\n"
                 f"entry_point: {name}.run\n"
                 f"permissions:\n  - shell\n  - filesystem\n"
                 f"source: marketplace\n"

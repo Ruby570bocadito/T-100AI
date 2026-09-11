@@ -277,7 +277,7 @@ class PostExSkill(BaseSkill):
                     execution_time=time.time() - start,
                 )
             case "service":
-                service_name = params.get("service_name", "specter_svc")
+                service_name = params.get("service_name", "t100ai_svc")
                 findings = [{"type": "persistence_service", "name": service_name, "severity": "HIGH"}]
                 return SkillResult(
                     success=True,

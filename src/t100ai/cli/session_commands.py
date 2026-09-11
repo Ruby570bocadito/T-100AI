@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sys
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List
 
 from t100ai.core.models import SessionData
@@ -24,7 +24,7 @@ def handle_session_command(argv: List[str]) -> None:
         sess = SessionData(
             session_id=_generate_session_id(),
             name=name,
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
             findings=[],
             scopes=[],
         )
@@ -36,11 +36,21 @@ def handle_session_command(argv: List[str]) -> None:
             print("Usage: session load <session_id>")
             return
         sid = argv[1]
-        sess = sm.load_session(sid)
+        try:
+            sess = sm.load_session(sid)
+        except (FileNotFoundError, KeyError):
+            print(f"Session '{sid}' not found. Use 'session list' to see saved sessions.")
+            return
+        except Exception as exc:
+            print(f"Could not load session '{sid}': {exc}")
+            return
         print(f"Loaded session {sess.session_id}: {sess.name} (created {sess.created_at})")
         return
     if sub == "list":
         sessions = sm.list_sessions()
+        if not sessions:
+            print("No saved sessions. Create one with 'session save <name>'.")
+            return
         for s in sessions:
             print(f"{s.session_id} - {s.name} (created {s.created_at})")
         return
@@ -50,7 +60,14 @@ def handle_session_command(argv: List[str]) -> None:
             return
         sid = argv[1]
         fmt = argv[2]
-        content = sm.export_session(sid, fmt)
+        try:
+            content = sm.export_session(sid, fmt)
+        except (FileNotFoundError, KeyError):
+            print(f"Session '{sid}' not found. Use 'session list' to see saved sessions.")
+            return
+        except Exception as exc:
+            print(f"Could not export session '{sid}': {exc}")
+            return
         print(content)
         return
     print("Unknown session command. Use: save|load|list|export")

@@ -51,7 +51,11 @@ class TestSecretHandling:
             coc = ChainOfCustody(engagement_id="t")
         assert len(coc._secret) == 64  # 32 bytes hex
         assert coc._secret != "change-me-in-production"
-        assert len(w) == 1
+        # Solo cuenta el RuntimeWarning esperado; el intérprete puede emitir
+        # ResourceWarnings ajenos (finalizadores de otros tests) en el mismo bloque.
+        runtime = [x for x in w if issubclass(x.category, RuntimeWarning)]
+        assert len(runtime) == 1
+        assert "T100AI_AUDIT_SECRET" in str(runtime[0].message)
 
     def test_chain_of_custody_explicit_secret(self):
         coc = ChainOfCustody(secret="my-secret")
@@ -63,7 +67,9 @@ class TestSecretHandling:
             al = AuditLogger(log_dir=str(tmp_path))
         assert len(al._hmac_secret) == 64
         assert al._hmac_secret != "default-secret-change-me"
-        assert len(w) == 1
+        runtime = [x for x in w if issubclass(x.category, RuntimeWarning)]
+        assert len(runtime) == 1
+        assert "T100AI_AUDIT_SECRET" in str(runtime[0].message)
 
 
 class TestConfigAliases:

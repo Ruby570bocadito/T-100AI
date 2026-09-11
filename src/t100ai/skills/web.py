@@ -110,9 +110,9 @@ class WebSkill(BaseSkill):
             return SkillResult(success=False, error="No se encontró gobuster ni ffuf", execution_time=time.time() - start)
 
         if tool == "gobuster":
-            cmd = ["gobuster", "dir", "-u", target, "-w", wordlist, "-o", "/tmp/specter_gobuster.txt"]
+            cmd = ["gobuster", "dir", "-u", target, "-w", wordlist, "-o", "/tmp/t100ai_gobuster.txt"]
         else:
-            cmd = ["ffuf", "-u", f"{target}/FUZZ", "-w", wordlist, "-o", "/tmp/specter_ffuf.json"]
+            cmd = ["ffuf", "-u", f"{target}/FUZZ", "-w", wordlist, "-o", "/tmp/t100ai_ffuf.json"]
 
         stdout, stderr, rc = await self._run_cmd(cmd, params.get("timeout", 300))
         output = stdout + stderr
@@ -221,7 +221,7 @@ class WebSkill(BaseSkill):
         if not tool:
             return SkillResult(success=False, error="No se encontró eyewitness ni webscreenshot", execution_time=time.time() - start)
 
-        outdir = f"/tmp/specter_screens_{target.replace('://', '_').replace('/', '_')}"
+        outdir = f"/tmp/t100ai_screens_{target.replace('://', '_').replace('/', '_')}"
 
         if tool == "eyewitness":
             cmd = ["eyewitness", "-d", outdir, "-f", target]

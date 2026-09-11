@@ -3,6 +3,62 @@
 Todos los cambios notables de T-100AI se documentan aquí.
 El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/).
 
+## [0.3.0] - 2026-09-12
+
+### Corregido
+- **`/model switch <nombre>` ignoraba el nombre** y cambiaba a un modelo
+  llamado literalmente "switch" (el router pasaba `action` en lugar de `arg`).
+- **`/scope set` sin argumento** añadía el objetivo "set" al scope; ahora
+  muestra el uso correcto.
+- **`/skill use` sin argumento** intentaba activar un skill llamado "use";
+  ahora muestra el uso correcto.
+- **`/wordlist all` roto en dos capas**: el router nunca llegaba a la rama
+  `all` (mostraba el menú) y, al llegar, `get_all()` devuelve un dict por
+  categorías que explotaba al rebanar. Ahora se aplana y lista.
+- **Ayuda desincronizada (drift)**: el engine tenía una segunda ayuda con
+  comandos fantasma (`/export` no existe; rol `forensic-analyst` no aceptado).
+  Ahora CLI y engine renderizan la MISMA fuente (`core/help_text.py`) y un
+  test verifica que cada comando anunciado existe en `KNOWN_COMMANDS`.
+- **Rutas de datos del pre-rebrand**: historial y sesiones en `~/.specter/`,
+  audit/log en `src/t100ai/log/` (dentro del árbol fuente o del CWD).
+  Todo migrado a `~/.t100ai/` con migración silenciosa del historial legacy.
+- **RuntimeWarning de runpy** en cada `python -m t100ai.cli.main`: import
+  diferido del paquete `cli` (PEP 562).
+- Restos de identidad antigua en skills (`/tmp/specter_*`), registry de
+  plugins (`~/.specter/tools.toml`), labels de workers y docstrings.
+- `datetime.utcnow()` (deprecado en 3.12) en audit, logging, storage y
+  sesiones → `datetime.now(timezone.utc)`.
+- Test de secretos frágil por orden (contaba warnings ajenos del intérprete):
+  ahora filtra por `RuntimeWarning` y valida el mensaje.
+- La ayuda en tabla rompía la fila de `/wordlist dir|subdomain|…` (los `|`
+  dentro de backticks eran separadores de columna de rich).
+
+### Añadido
+- **TAB-completion y historial persistente en el REPL** (readline en POSIX,
+  fallback suave en Windows): autocompleta comandos slash, subacciones y
+  nombres descubiertos; flechas ↑/↓ con historial entre sesiones.
+- **`t100ai doctor`**: diagnóstico del entorno (Python, dependencias, config,
+  directorios de datos, wordlists, sandbox —permite benignos / bloquea
+  destructivos— y alcance TCP de Ollama) con salida tabla o `--json` y exit
+  code honesto.
+- **`t100ai session`**: subcomando operativo (save/load/list/export) para el
+  gestor de sesiones que estaba huérfano; con guards de "no encontrado".
+- **Sugerencias de comandos**: `/scop` → *¿Quisiste decir: /scope?*
+  (difflib sobre `KNOWN_COMMANDS`, la misma tabla que alimenta TAB).
+- **`--version` / `-V`** en el CLI raíz y **`--no-banner`** para uso
+  scriptable; el banner muestra la versión y el aviso de autorización.
+- **Consola honesta con tuberías**: sin `force_terminal` — output limpio sin
+  secuencias ANSI al redirigir, color intacto en TTY.
+- Capturas nuevas: `help.png` y `doctor.png`; GIF regenerado con la v0.3.0.
+
+### Cambiado
+- `/exit`, `/quit` y `/salir` cierran el terminal de verdad (flag
+  `_exit_requested` consumida por el REPL).
+- `prompt_toolkit` eliminado de dependencias (su código estaba muerto desde
+  la v0.1; el REPL usaba `input()`).
+- `KNOWN_COMMANDS` en `command_router` es el registro único que alimenta
+  sugerencias, TAB-completion y el test anti-drift de la ayuda.
+
 ## [0.2.1] - 2026-09-12
 
 ### Corregido

@@ -2,7 +2,7 @@
 
 ![CI](https://github.com/Ruby570bocadito/T-100AI/actions/workflows/ci.yml/badge.svg)
 ![Python](https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-430%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-461%20passing-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Offline](https://img.shields.io/badge/offline-100%25%20air--gapped-black)
 
@@ -64,7 +64,13 @@ python -m t100ai.cli.main              # terminal interactivo
 python -m t100ai.cli.main -s 10.0.0.5  # con scope inicial
 python -m t100ai.cli.main --no-llm     # sin modelo (solo skills/tools)
 t100ai version && t100ai info          # entry point del paquete
+t100ai doctor                          # diagnóstico del entorno
+t100ai session list                    # sesiones guardadas (save/load/list/export)
 ```
+
+En el REPL: **TAB** autocompleta comandos y subacciones, **↑/↓** navegan el
+historial persistente (se guarda entre sesiones) y los comandos desconocidos
+sugieren el más cercano (`/scop` → *¿Quisiste decir: /scope?*).
 
 Al arrancar se pide **confirmación de uso ético**; después, REPL:
 
@@ -91,6 +97,14 @@ Resumen de sesión generado desde datos reales (`/session`):
 
 ![Resumen de sesión](docs/captures/session_info.png)
 
+Ayuda integrada (fuente única compartida con el router — no puede desincronizarse):
+
+![Ayuda integrada](docs/captures/help.png)
+
+Diagnóstico del entorno con `t100ai doctor` (deps, config, sandbox, Ollama):
+
+![Doctor](docs/captures/doctor.png)
+
 ### Comandos (todos operativos, verificados en el router)
 
 | Grupo | Comandos |
@@ -104,7 +118,7 @@ Resumen de sesión generado desde datos reales (`/session`):
 | Contexto | `/context show\|clear` · `/history` · `/perf` |
 | Agentes | `/agent list\|spawn\|status` · `/deploy task\|status\|list` |
 | Workflows | `/workflow list\|run\|status` · `/plugin list\|search\|install` |
-| Utilidades | `/wordlist dir\|subdomain\|user\|pass\|sql\|xss\|lfi\|cve` · `/read` · `/help` |
+| Utilidades | `/wordlist dir\|subdomain\|user\|pass\|sql\|xss\|lfi\|cve\|all` · `/read` · `/help` |
 
 ## Arquitectura
 
@@ -132,7 +146,7 @@ src/t100ai/
 ## Tests y calidad
 
 ```bash
-python -m pytest tests/ -q          # 430 tests offline
+python -m pytest tests/ -q          # 461 tests offline
 ruff check src/ tests/              # E/F/W/I sin excepciones
 ```
 
@@ -140,7 +154,7 @@ CI en GitHub Actions: lint + tests en Python 3.10/3.11/3.12.
 
 ## Changelog
 
-Ver [CHANGELOG.md](CHANGELOG.md) — v0.2.0: CLI honesto, sandbox con kill de árbol real, API con body/Host validation, lint real y limpieza de archivos.
+Ver [CHANGELOG.md](CHANGELOG.md) — v0.3.0: CLI profesional (TAB-completion, historial persistente, sugerencias de comandos, `doctor`, `session`, ayuda unificada anti-drift) y rutas de datos en `~/.t100ai`.
 
 ## Licencia
 

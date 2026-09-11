@@ -2,12 +2,26 @@
 
 Every command advertised in /help is wired here to a real handler.
 If a command is not in this table, it does not exist in the terminal.
+
+KNOWN_COMMANDS is the single registry used by:
+  - unknown-command suggestions (difflib)
+  - TAB completion in the REPL (t100ai.cli.main)
+  - the help-vs-router consistency test
 """
 
+import difflib
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from t100ai.core.engine import T100AIEngine
+
+
+KNOWN_COMMANDS = [
+    "help", "session", "scope", "save", "clear", "role", "mode",
+    "skill", "skills", "tool", "tools", "model", "finding", "findings",
+    "report", "log", "context", "history", "perf", "wordlist", "dict",
+    "agent", "read", "deploy", "workflow", "plugin", "exit", "quit", "salir",
+]
 
 
 class CommandRouter:
@@ -35,9 +49,9 @@ class CommandRouter:
             "help": lambda: self._engine._show_help(),
             "save": lambda: self._engine._handle_save_command(arg),
             "clear": lambda: self._engine.console.clear(),
-            "exit": lambda: self._engine.console.print("[yellow]Usa Ctrl+C o escribe 'exit' sin barra para salir[/]"),
-            "quit": lambda: self._engine.console.print("[yellow]Usa Ctrl+C o escribe 'quit' sin barra para salir[/]"),
-            "salir": lambda: self._engine.console.print("[yellow]Usa Ctrl+C o escribe 'salir' sin barra para salir[/]"),
+            "exit": lambda: self._request_exit("exit"),
+            "quit": lambda: self._request_exit("quit"),
+            "salir": lambda: self._request_exit("salir"),
         }
 
         if cmd in handlers:
@@ -84,15 +98,37 @@ class CommandRouter:
         elif cmd == "perf":
             self._engine._show_performance_stats()
         else:
-            self._engine.console.print(f"[yellow]Comando desconocido: /{cmd}[/]")
+            self._unknown_command(cmd)
+
+    def _request_exit(self, alias: str) -> None:
+        """Marca la salida: el REPL comprueba ``engine._exit_requested``."""
+        self._engine._exit_requested = True
+        self._engine.console.print("[yellow]Cerrando T-100AI...[/]")
+
+    def _unknown_command(self, cmd: str) -> None:
+        """Comando desconocido con sugerencias cercanas (difflib)."""
+        self._engine.console.print(f"[yellow]Comando desconocido: /{cmd}[/]")
+        matches = difflib.get_close_matches(cmd, KNOWN_COMMANDS, n=3, cutoff=0.6)
+        if matches:
+            suggestions = " · ".join(f"/{m}" for m in matches)
+            self._engine.console.print(f"[#00D4FF]¿Quisiste decir:[/] {suggestions}")
+        else:
             self._engine.console.print("[dim]Usa /help para ver comandos disponibles[/]")
 
     async def _route_model(self, action: str, arg: str) -> None:
         """Route /model sub-commands."""
         if action == "list":
             await self._engine._list_models()
-        elif action == "switch" or (action and not action.startswith("-")):
-            await self._engine._switch_model(action if action else arg)
+        elif action == "switch":
+            if not arg:
+                self._engine.console.print(
+                    "[yellow]Uso: /model switch <nombre>  (ej: /model switch qwen2.5)[/]"
+                )
+            else:
+                await self._engine._switch_model(arg)
+        elif action and not action.startswith("-"):
+            # Forma corta: /model <nombre> equivale a /model switch <nombre>
+            await self._engine._switch_model(action)
         else:
             self._engine._show_model_info()
 
@@ -103,6 +139,8 @@ class CommandRouter:
         """
         if action == "set" and arg:
             self._engine._handle_scope_command(arg)
+        elif action == "set" and not arg:
+            self._engine.console.print("[yellow]Uso: /scope set <ip|cidr|domain>[/]")
         elif action in ("show", ""):
             self._engine._show_scope()
         elif action == "clear":
@@ -131,6 +169,8 @@ class CommandRouter:
         """
         if action == "use" and arg:
             await self._use_skill(arg)
+        elif action == "use" and not arg:
+            self._engine.console.print("[yellow]Uso: /skill use <nombre>[/]")
         elif action == "info" and arg:
             await self._skill_info(arg)
         elif action in ("list", ""):

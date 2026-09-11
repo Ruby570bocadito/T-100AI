@@ -1,6 +1,6 @@
 [project]
 name = "t100ai"
-version = "0.2.1"
+version = "0.3.0"
 description = "T-100AI - AI-Powered Offensive Security Terminal (offline, local LLM, human-in-the-loop)"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -29,7 +29,6 @@ dependencies = [
     "structlog>=24.1.0",
     "python-dotenv>=1.0.0",
     "click>=8.1.0",
-    "prompt_toolkit>=3.0.0",
 ]
 
 [project.optional-dependencies]

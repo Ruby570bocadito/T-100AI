@@ -3,6 +3,7 @@
 import asyncio
 import time
 from datetime import datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 import structlog
@@ -50,9 +51,17 @@ class T100AIEngine:
         self._last_generated_code: Optional[dict] = None
         self._cancel_requested = False
         self._permission_manager = PermissionManager(current_level=PermissionLevel.OBSERVATION)
-        self._audit_logger = AuditLogger(path="src/t100ai/log/audit.log")
+        # Datos del usuario en ~/.t100ai (nunca en el árbol fuente ni en el CWD)
+        log_dir = Path.home() / ".t100ai" / "logs"
         try:
-            setup_logging(level="INFO", log_file="src/t100ai/log/specter.log", json_output=True)
+            log_dir.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            log_dir = None  # type: ignore[assignment]
+        audit_path = str(log_dir / "audit.log") if log_dir else "audit.log"
+        self._audit_logger = AuditLogger(path=audit_path)
+        try:
+            if log_dir:
+                setup_logging(level="INFO", log_file=str(log_dir / "t100ai.log"), json_output=True)
         except Exception:
             pass
 
@@ -846,11 +855,11 @@ class T100AIEngine:
             self.console.print("[dim]Usa /save para guardar el codigo[/]")
 
     def _display_orchestrator_activity(self) -> None:
-        """Muestra actividad del orquestador con specter-mini"""
+        """Muestra actividad del orquestador con t100ai-worker"""
         if self.agent_orchestrator:
             agents = self.agent_orchestrator.list_agents()
             if agents:
-                self.console.print("[#444444]◈ Worker:[/] [#666666]specter-mini 1[/]")
+                self.console.print("[#444444]◈ Worker:[/] [#666666]t100ai-worker 1[/]")
                 self.console.print("[#444444]  Estado:[/] [#666666]Activo[/]")
 
     def _display_code_block(self, code: str, lang: str, filename: str = "") -> None:
@@ -1189,69 +1198,12 @@ class T100AIEngine:
             self.console.print()
 
     def _show_help(self) -> None:
-        """Muestra ayuda de comandos"""
-        help_text = """
-## Comandos Disponibles
-
-### Configuración de Sesión
-| Comando | Descripción |
-|---------|-------------|
-| `/scope <target>` | Añadir objetivo al scope |
-| `/role <nombre>` | Cambiar rol (pentester, red-team, etc.) |
-| `/session` | Ver información de la sesión |
-
-### Skills y Herramientas
-| Comando | Descripción |
-|---------|-------------|
-| `/skills` | Listar skills disponibles |
-| `/tools` | Listar herramientas disponibles |
-| `/skill <nombre>` | Activar skill específico |
-
-### Wordlists y Diccionarios
-| Comando | Descripción |
-|---------|-------------|
-| `/wordlist dir` | Directorios comunes |
-| `/wordlist subdomain` | Subdominios comunes |
-| `/wordlist user` | Nombres de usuario |
-| `/wordlist pass` | Contraseñas comunes |
-| `/wordlist sql` | SQL Injection payloads |
-| `/wordlist xss` | XSS payloads |
-| `/wordlist all` | Todas las wordlists |
-
-### Agentes
-| Comando | Descripción |
-|---------|-------------|
-| `/agent list` | Listar agentes |
-| `/agent spawn <task>` | Desplegar tarea |
-| `/agent status` | Estado del orquestador |
-
-### Archivos
-| Comando | Descripción |
-|---------|-------------|
-| `/read <ruta>` | Leer y mostrar archivo |
-
-### Resultados
-| Comando | Descripción |
-|---------|-------------|
-| `/findings` | Ver hallazgos de la sesión |
-| `/export` | Exportar sesión |
-
-### Sistema
-| Comando | Descripción |
-|---------|-------------|
-| `/help` | Mostrar esta ayuda |
-| `/clear` | Limpiar pantalla |
-| `/exit` | Salir de T-100AI |
-
-### Roles Disponibles
-- `pentester` - Auditor profesional
-- `red-teamer` - Operador ofensivo
-- `blue-teamer` - Defensor
-- `ctf-player` - Jugador CTF
-- `forensic-analyst` - Analista forense
-"""
+        """Muestra ayuda de comandos (fuente única: core.help_text)."""
         from rich.markdown import Markdown
-        self.console.print(Markdown(help_text))
+
+        from t100ai.core.help_text import markdown_help
+
+        self.console.print(Markdown(markdown_help()))
 
     def _show_wordlists(self, action: str, arg: str) -> None:
         """Muestra wordlists y diccionarios disponibles"""
@@ -1285,8 +1237,13 @@ class T100AIEngine:
         elif action == "cve":
             items = attack_dict.get_cve_patterns()
             title = "CVE Search Patterns"
-        elif arg:
-            items = attack_dict.get_all()
+        elif action == "all" or arg:
+            # get_all() devuelve un dict por categoría: se aplana para mostrar
+            items = [
+                item
+                for category_items in attack_dict.get_all().values()
+                for item in category_items
+            ]
             title = "Todas las Wordlists"
         else:
             table = Table(title="Wordlists Disponibles")
@@ -1327,7 +1284,7 @@ class T100AIEngine:
             if not self.agent_orchestrator:
                 self.console.print("[yellow]Orquestador no inicializado. Usa /help[/]")
                 return
-            self.console.print("[#444444]◈ Worker:[/] [#666666]specter-mini 1[/]")
+            self.console.print("[#444444]◈ Worker:[/] [#666666]t100ai-worker 1[/]")
             self.console.print(f"[#444444]  Desplegando tarea:[/] [#00D4FF]{arg}[/]")
 
             task_id = await self.agent_orchestrator.deploy_task(arg, {})

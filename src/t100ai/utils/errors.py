@@ -136,7 +136,7 @@ class ConfigError(T100AIError):
             ),
             ErrorSuggestion(
                 action="Restaura configuración por defecto",
-                command="specter --config default"
+                command="t100ai --config default"
             )
         ]
         if config_key:
@@ -169,7 +169,7 @@ class LLMError(T100AIError):
             ),
             ErrorSuggestion(
                 action="Modo sin LLM (herramientas solo)",
-                command="specter --no-llm"
+                command="t100ai --no-llm"
             )
         ]
 

@@ -5,6 +5,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+DEFAULT_HISTORY_FILE = "~/.t100ai/history.json"
+LEGACY_HISTORY_FILE = "~/.specter/history.json"  # pre-rebrand
+
 
 class CommandHistory:
     """
@@ -13,9 +16,10 @@ class CommandHistory:
     - Search capability
     - Deduplication
     - Session tagging
+    - Legacy ~/.specter migration on first load
     """
 
-    def __init__(self, history_file: str = "~/.specter/history.json", max_entries: int = 1000):
+    def __init__(self, history_file: str = DEFAULT_HISTORY_FILE, max_entries: int = 1000):
         self.history_file = Path(history_file).expanduser()
         self.max_entries = max_entries
         self._history: list[dict] = []
@@ -25,6 +29,15 @@ class CommandHistory:
         if self.history_file.exists():
             try:
                 with open(self.history_file, "r") as f:
+                    self._history = json.load(f)
+                return
+            except Exception:
+                self._history = []
+        # Migración silenciosa desde la ruta antigua del pre-rebrand
+        legacy = Path(LEGACY_HISTORY_FILE).expanduser()
+        if self.history_file == Path(DEFAULT_HISTORY_FILE).expanduser() and legacy.exists():
+            try:
+                with open(legacy, "r") as f:
                     self._history = json.load(f)
             except Exception:
                 self._history = []

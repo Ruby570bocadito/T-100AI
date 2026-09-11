@@ -23,7 +23,7 @@ from typing import Any, Callable, Optional
 import yaml
 
 try:
-    from pydantic import BaseModel, Field, ValidationError, field_validator
+    from pydantic import AliasChoices, BaseModel, Field, ValidationError, field_validator
 except ImportError:
     raise ImportError("pydantic is required. Install with: pip install pydantic")
 
@@ -52,7 +52,10 @@ class PluginManifest(BaseModel):
     version: str = Field(..., min_length=1, max_length=32, pattern=r"^\d+\.\d+\.\d+.*$")
     description: str = Field(..., min_length=1, max_length=500)
     author: str = Field(..., min_length=1, max_length=128)
-    min_specter_version: str = Field(default="1.0.0")
+    min_t100ai_version: str = Field(
+        default="1.0.0",
+        validation_alias=AliasChoices("min_t100ai_version", "min_specter_version"),
+    )
     dependencies: list[str] = Field(default_factory=list)
     entry_point: str = Field(..., pattern=r"^[a-zA-Z0-9_.]+\.[a-zA-Z_][a-zA-Z0-9_]*$")
     permissions: list[str] = Field(default_factory=list)
@@ -481,13 +484,13 @@ class PluginManager:
         plugins_dir: str = "plugins",
         command_sandbox: Optional[CommandSandbox] = None,
         audit_logger: Optional[AuditLogger] = None,
-        specter_version: str = "1.0.0",
+        t100ai_version: str = "1.0.0",
     ):
         self.plugins_dir = Path(plugins_dir).resolve()
         self.plugins_dir.mkdir(parents=True, exist_ok=True)
         self.command_sandbox = command_sandbox or CommandSandbox()
         self.audit_logger = audit_logger or AuditLogger()
-        self.specter_version = specter_version
+        self.t100ai_version = t100ai_version
 
         self._plugins: dict[str, PluginInfo] = {}
         self._sandboxes: dict[str, PluginSandbox] = {}
@@ -559,11 +562,11 @@ class PluginManager:
             logger.error(f"Failed to parse plugin.yaml at {path}: {e}")
             return False
 
-        if manifest.min_specter_version:
-            if not self._version_gte(self.specter_version, manifest.min_specter_version):
+        if manifest.min_t100ai_version:
+            if not self._version_gte(self.t100ai_version, manifest.min_t100ai_version):
                 logger.error(
-                    f"Plugin '{manifest.name}' requires T-100AI >= {manifest.min_specter_version}, "
-                    f"current is {self.specter_version}"
+                    f"Plugin '{manifest.name}' requires T-100AI >= {manifest.min_t100ai_version}, "
+                    f"current is {self.t100ai_version}"
                 )
                 return False
 

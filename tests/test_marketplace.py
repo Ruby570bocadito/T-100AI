@@ -1,4 +1,4 @@
-"""Tests for PluginMarketplace in specter.plugins.marketplace."""
+"""Tests for PluginMarketplace in t100ai.plugins.marketplace."""
 
 import tempfile
 from pathlib import Path

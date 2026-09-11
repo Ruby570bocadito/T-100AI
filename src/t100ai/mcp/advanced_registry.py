@@ -687,7 +687,7 @@ class AdvancedToolRegistry:
         """Descubre herramientas desde configuración"""
         config_paths = [
             Path("t100ai/tools.toml"),
-            Path("~/.specter/tools.toml").expanduser(),
+            Path("~/.t100ai/tools.toml").expanduser(),
             Path("t100ai/config/tools.toml"),
         ]
 

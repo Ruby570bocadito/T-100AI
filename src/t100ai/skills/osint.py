@@ -209,7 +209,7 @@ class OsintSkill(BaseSkill):
 
         if shutil.which("theHarvester"):
             stdout, _, rc = await self._run_cmd(
-                ["theHarvester", "-d", domain, "-b", "all", "-f", "/tmp/specter_emails"], 120
+                ["theHarvester", "-d", domain, "-b", "all", "-f", "/tmp/t100ai_emails"], 120
             )
             if rc == 0:
                 output += stdout

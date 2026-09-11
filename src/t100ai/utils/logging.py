@@ -9,7 +9,7 @@ from logging.handlers import RotatingFileHandler
 import structlog
 
 # Contextual session id used to tag logs with the current user/session
-_session_id_ctx: contextvars.ContextVar = contextvars.ContextVar("specter_session_id", default=None)
+_session_id_ctx: contextvars.ContextVar = contextvars.ContextVar("t100ai_session_id", default=None)
 
 def set_session_id(session_id: str) -> None:
     """Set the current session id to be attached to all log events."""
@@ -27,7 +27,7 @@ def add_session_id(_, __, event_dict):
 
 def add_timestamp(_, __, event_dict):
     # Timestamps are also provided by TimeStamper, but keep a deterministic UTC time here
-    event_dict["timestamp"] = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+    event_dict["timestamp"] = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     return event_dict
 
 def mask_sensitive_data(_, __, event_dict):
@@ -59,7 +59,7 @@ def mask_sensitive_data(_, __, event_dict):
 def add_log_level(logger, method_name, event_dict):
     # Ensure the log level is always present in the event payload
     if "log_level" not in event_dict:
-        event_dict["log_level"] = (getattr(logger, "__name__", "specter")) or str(method_name)
+        event_dict["log_level"] = (getattr(logger, "__name__", "t100ai")) or str(method_name)
     return event_dict
 
 # --- Logger bootstrap ---
@@ -129,7 +129,7 @@ class ColoredFormatter(logging.Formatter):
         levelname = record.levelname
         color = self.COLORS.get(levelname, "37")
         prefix = f"\x1b[{color}m{levelname}\x1b[0m"
-        timestamp = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+        timestamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         message = super().format(record)
         return f"{timestamp} {prefix} {message}"
 
@@ -139,7 +139,7 @@ class JsonFormatter(logging.Formatter):
         # If someone passed a dict as message, dump it as JSON
         payload = msg if isinstance(msg, (dict, list)) else {"message": msg}
         # Attach a minimal metadata snapshot for compatibility
-        payload.setdefault("timestamp", datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"))
+        payload.setdefault("timestamp", datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
         payload.setdefault("level", record.levelname)
         try:
             return json.dumps(payload)

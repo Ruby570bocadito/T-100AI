@@ -3,7 +3,7 @@ import os
 import sqlite3
 import uuid
 from dataclasses import asdict, dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
@@ -31,7 +31,7 @@ class JSONStorage:
 
 class SessionStorage(JSONStorage):
     def __init__(self, base_dir: Optional[str] = None) -> None:
-        self.base_dir = Path(base_dir or os.path.expanduser("~/.specter/sessions"))
+        self.base_dir = Path(base_dir or os.path.expanduser("~/.t100ai/sessions"))
         self.base_dir.mkdir(parents=True, exist_ok=True)
 
     def session_path(self, session_id: str) -> str:
@@ -61,7 +61,7 @@ class PersistentFinding:
         if not self.id:
             self.id = uuid.uuid4().hex[:8]
         if not self.created_at:
-            self.created_at = datetime.utcnow().isoformat()
+            self.created_at = datetime.now(timezone.utc).isoformat()
         if not self.updated_at:
             self.updated_at = self.created_at
         if self.tags is None:
@@ -142,7 +142,7 @@ class FindingStore:
         return [self._row_to_finding(r) for r in rows]
 
     def update_severity(self, finding_id: str, severity: str) -> bool:
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         cursor = self._conn.execute(
             "UPDATE findings SET severity = ?, updated_at = ? WHERE id = ?",
             (severity, now, finding_id)
@@ -151,7 +151,7 @@ class FindingStore:
         return cursor.rowcount > 0
 
     def update_cvss(self, finding_id: str, cvss: float) -> bool:
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         cursor = self._conn.execute(
             "UPDATE findings SET cvss = ?, updated_at = ? WHERE id = ?",
             (cvss, now, finding_id)

@@ -1,4 +1,4 @@
-"""Comprehensive tests for ToolExecutor in specter.mcp.executor."""
+"""Comprehensive tests for ToolExecutor in t100ai.mcp.executor."""
 
 import pytest
 

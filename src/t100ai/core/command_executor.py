@@ -594,7 +594,7 @@ class CommandExecutor:
             self.console.print(table)
         elif action == "spawn" and arg:
             self.console.print(
-                "[#444444]◈ Worker:[/] [#666666]specter-mini 1[/]"
+                "[#444444]◈ Worker:[/] [#666666]t100ai-worker 1[/]"
             )
             self.console.print(
                 f"[#444444]  Desplegando tarea:[/] [#00D4FF]{arg}[/]"

@@ -9,7 +9,6 @@ pydantic-settings>=2.0.0
 structlog>=24.1.0
 python-dotenv>=1.0.0
 click>=8.1.0
-prompt_toolkit>=3.0.0
 
 # Dev dependencies
 pytest>=7.4.0

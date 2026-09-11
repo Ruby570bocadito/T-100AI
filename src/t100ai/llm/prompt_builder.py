@@ -4,7 +4,7 @@ Optimized system prompts for enterprise pentesting, CTF, blue team,
 forensics, and red team operations.
 
 Loads role prompts and command instructions from template files
-in src/specter/llm/templates/ with fallback to hardcoded strings.
+in src/t100ai/llm/templates/ with fallback to hardcoded strings.
 """
 
 from pathlib import Path

@@ -112,7 +112,7 @@ class ReconSkill(BaseSkill):
         ports = params.get("ports", "1-1000")
         scan_type = params.get("scan_type", "-sS")
         timing = params.get("timing", "-T3")
-        outfile = f"/tmp/specter_nmap_{target.replace('.', '_')}"
+        outfile = f"/tmp/t100ai_nmap_{target.replace('.', '_')}"
 
         cmd = ["nmap", scan_type, timing, "-p", ports, "-oA", outfile, target]
         logger.info("Running nmap", target=target, ports=ports)
@@ -198,7 +198,7 @@ class ReconSkill(BaseSkill):
         """Escaneo de vulnerabilidades con nmap --script vuln"""
         target = params["target"]
         ports = params.get("ports", "1-1000")
-        outfile = f"/tmp/specter_nmap_vuln_{target.replace('.', '_')}"
+        outfile = f"/tmp/t100ai_nmap_vuln_{target.replace('.', '_')}"
         cmd = ["nmap", "-sV", "--script", "vuln", "-p", ports, "-T4", "-oA", outfile, target]
 
         stdout, stderr, rc = await self._run_cmd(cmd, params.get("timeout", 600))

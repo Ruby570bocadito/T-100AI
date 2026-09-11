@@ -1,15 +1,18 @@
 """T-100AI CLI - Main Entry Point
 
-Terminal interactivo honesto: cada comando documentado en `markdown_help()`
+Terminal interactivo honesto: cada comando documentado en ``markdown_help()``
 está cableado en t100ai.core.command_router.CommandRouter. Si un comando no
 está en la tabla del router, no existe y la ayuda no lo anuncia.
+
+La ayuda vive en t100ai.core.help_text (fuente única compartida con el engine)
+y KNOWN_COMMANDS en command_router alimenta sugerencias y TAB-completion.
 """
 
 import asyncio
-import importlib.util
+import atexit
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, List, Optional
 
 import typer
 from rich.console import Console
@@ -18,19 +21,19 @@ from rich.panel import Panel
 from rich.prompt import Confirm
 from rich.table import Table
 
+from t100ai import __version__
 from t100ai.core import Session, T100AIEngine
 from t100ai.utils.history import CommandHistory
 
-prompt_toolkit_available = importlib.util.find_spec("prompt_toolkit") is not None
-if prompt_toolkit_available:
-    from prompt_toolkit.completion import Completion
-else:
-    Completion = None
+if TYPE_CHECKING:
+    from t100ai.core.config import T100AIConfig
 
 if sys.stdout.encoding != "utf-8":
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-console = Console(force_terminal=True, file=sys.stdout)
+# Sin ``force_terminal``: rich detecta TTY solo. En una tubería el output es
+# texto limpio (scriptable); en un pty mantiene el color. FORCE_COLOR fuerza.
+console = Console(file=sys.stdout)
 
 # Persistent command history
 command_history = CommandHistory()
@@ -42,64 +45,137 @@ app = typer.Typer(
     invoke_without_command=True,
 )
 
-VERSION = "0.2.1"
+VERSION = __version__
 
 
-class ContextAwareCompleter:
-    """Autocompletado de comandos del sistema y nombres descubiertos."""
+# ─────────────────────────────────────────────────────────────────────────────
+# TAB completion (readline) — comandos slash, subacciones y nombres descubiertos
+# ─────────────────────────────────────────────────────────────────────────────
+from t100ai.core.command_router import KNOWN_COMMANDS  # noqa: E402
 
-    def __init__(self, session: Optional["Session"] = None, engine: Optional["T100AIEngine"] = None):
-        self.session = session
-        self.engine = engine
-
-    def get_completions(self, document, complete_event):
-        text = document.text_before_cursor
-        if not text:
-            return
-
-        parts = text.split()
-        if len(parts) == 1:
-            last = parts[0]
-            pool = set(_system_command_list())
-            if last.startswith("/"):
-                for cmd in pool:
-                    if cmd.startswith(last[1:]):
-                        yield Completion(f"/{cmd}", start_position=-len(last))
-            else:
-                names = _discover_names()
-                for suggestion in (
-                    names.get("tools", []) + names.get("skills", []) + names.get("workflows", [])
-                ):
-                    if suggestion.startswith(last.lower()):
-                        yield Completion(suggestion, start_position=-len(last))
-
-    def update_context(self, session, engine) -> None:
-        self.session = session
-        self.engine = engine
+_SUBACTIONS = {
+    "scope": ["set", "show", "clear"],
+    "role": ["set", "show", "list"],
+    "mode": ["paranoid", "standard", "expert"],
+    "skill": ["list", "use", "info"],
+    "model": ["info", "switch", "list"],
+    "findings": ["show", "add", "score"],
+    "report": ["generate", "preview", "session", "export"],
+    "log": ["show", "export"],
+    "context": ["show", "clear"],
+    "wordlist": ["dir", "subdomain", "user", "pass", "sql", "xss", "lfi", "cve", "all"],
+    "agent": ["list", "spawn", "status"],
+    "deploy": ["task", "status", "list"],
+    "workflow": ["list", "run", "status"],
+    "plugin": ["list", "install", "info", "search"],
+}
 
 
-# NOTE: prompt_toolkit requiere contexto async correcto; el REPL usa input()
-# estándar que funciona de forma fiable en todas las plataformas.
-from t100ai.core.config import T100AIConfig  # noqa: E402
+def _completion_candidates(line: str, text: str) -> List[str]:
+    """Candidatos de autocompletado para la línea actual."""
+    stripped = line.lstrip()
+    if not stripped.startswith("/"):
+        # Entrada natural: nombres de tools/skills/workflows descubiertos
+        if len(stripped.split()) > 1:
+            return []
+        names = _discover_names()
+        pool = names["tools"] + names["skills"] + names["workflows"]
+        low = text.lower()
+        return [n for n in pool if n.startswith(low)]
+
+    inner = stripped[1:]
+    if not inner or inner.endswith(" "):
+        word = inner.strip().lower()
+        if not word:
+            return [f"/{c}" for c in KNOWN_COMMANDS]
+        if " " in word:
+            first = word.split()[0]
+            return list(_SUBACTIONS.get(first, []))
+        if word in KNOWN_COMMANDS:
+            return list(_SUBACTIONS.get(word, []))
+        return [f"/{c}" for c in KNOWN_COMMANDS if c.startswith(word)]
+
+    parts = inner.split()
+    if len(parts) == 1:
+        prefix = parts[0].lower()
+        return [f"/{c}" for c in KNOWN_COMMANDS if c.startswith(prefix)]
+    subs = _SUBACTIONS.get(parts[0].lower(), [])
+    last = parts[-1].lower()
+    return [s for s in subs if s.startswith(last)]
+
+
+def _readline_completer(text: str, state: int):
+    try:
+        line = readline.get_line_buffer()  # noqa: F821 — solo se registra con readline
+    except NameError:
+        return None
+    matches = [m + " " for m in _completion_candidates(line, text)]
+    try:
+        return matches[state]
+    except IndexError:
+        return None
+
+
+def _setup_readline() -> None:
+    """Activa TAB-completion y flecha-arriba persistentes (POSIX)."""
+    try:
+        import readline  # noqa: F401 — módulo global para el completer
+    except ImportError:
+        return  # Windows sin pyreadline: REPL funcional sin autocompletado
+
+    hist_file = Path("~/.t100ai/readline_history").expanduser()
+    try:
+        hist_file.parent.mkdir(parents=True, exist_ok=True)
+        if hist_file.exists():
+            readline.read_history_file(str(hist_file))
+        readline.set_history_length(1000)
+    except OSError:
+        pass
+
+    # Precarga el historial persistente de sesiones anteriores
+    for cmd in command_history.get_recent(200):
+        try:
+            readline.add_history(cmd)
+        except Exception:
+            break
+
+    readline.set_completer(_readline_completer)
+    readline.set_completer_delims(" \t\n;,")
+    readline.parse_and_bind("tab: complete")
+    readline.parse_and_bind("set completion-display-width 0")
+
+    def _save() -> None:
+        try:
+            readline.write_history_file(str(hist_file))
+        except OSError:
+            pass
+
+    atexit.register(_save)
 
 
 def _confirm_ethical_use() -> None:
     """Gate de uso ético. Obligatorio antes de cualquier operación."""
-    if not Confirm.ask(
-        "[yellow]!! CONFIRMACION DE USO ETICO !!\n"
-        "Este software esta disenado exclusivamente para uso profesional etico autorizado.\n"
-        "Solo debe usarse en sistemas donde tengas autorizacion explicita.\n\n"
-        "Confirmas que tienes autorizacion para operar en estos sistemas?",
-        default=False,
-    ):
-        console.print("[red]Operacion cancelada. T-100AI requiere autorizacion expliita.[/]")
+    try:
+        confirmed = Confirm.ask(
+            "[yellow]!! CONFIRMACION DE USO ETICO !!\n"
+            "Este software esta disenado exclusivamente para uso profesional etico autorizado.\n"
+            "Solo debe usarse en sistemas donde tengas autorizacion explicita.\n\n"
+            "Confirmas que tienes autorizacion para operar en estos sistemas?",
+            default=False,
+        )
+    except EOFError:
+        confirmed = False
+    if not confirmed:
+        console.print("[red]Operacion cancelada. T-100AI requiere autorizacion explicita.[/]")
         raise typer.Exit(code=1)
 
 
 def _apply_config_and_confirm(
     config_path: Optional[str], debug: bool, model: Optional[str], no_llm: bool
-) -> T100AIConfig:
+) -> "T100AIConfig":
     """Load config, apply CLI overrides, and confirm ethical use."""
+    from t100ai.core.config import T100AIConfig  # noqa: E402
+
     cfg = T100AIConfig.load(config_path=config_path)
     if debug:
         cfg.log_level = "DEBUG"
@@ -114,6 +190,12 @@ def _apply_config_and_confirm(
     return cfg
 
 
+def _version_callback(value: bool) -> None:
+    if value:
+        console.print(f"[#00FF88]T-100AI v{VERSION}[/]")
+        raise typer.Exit()
+
+
 @app.callback(invoke_without_command=True)
 def cli_callback(
     ctx: typer.Context,
@@ -122,17 +204,21 @@ def cli_callback(
     debug: bool = typer.Option(False, "--debug", "-d", help="Modo debug"),
     no_llm: bool = typer.Option(False, "--no-llm", help="Modo sin LLM"),
     scope: Optional[str] = typer.Option(None, "--scope", "-s", help="Objetivo inicial (IP/dominio)"),
+    no_banner: bool = typer.Option(False, "--no-banner", help="Omite el banner (para scripts)"),
+    version_flag: bool = typer.Option(
+        False, "--version", "-V", callback=_version_callback, is_eager=True,
+        help="Muestra la versión y sale",
+    ),
 ) -> None:
     """T-100AI - AI-Powered Offensive Security Terminal.
 
     Sin subcomando arranca el terminal interactivo.
     """
     if ctx.invoked_subcommand is None:
-        show_banner()
         cfg = _apply_config_and_confirm(config, debug, model, no_llm)
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        loop.run_until_complete(run_t100ai(cfg, scope))
+        loop.run_until_complete(run_t100ai(cfg, scope, no_banner=no_banner))
 
 
 @app.command("main")
@@ -142,6 +228,11 @@ def main_entry(
     debug: bool = typer.Option(False, "--debug", "-d", help="Modo debug"),
     no_llm: bool = typer.Option(False, "--no-llm", help="Modo sin LLM"),
     scope: Optional[str] = typer.Option(None, "--scope", "-s", help="Objetivo inicial (IP/dominio)"),
+    no_banner: bool = typer.Option(False, "--no-banner", help="Omite el banner (para scripts)"),
+    version_flag: bool = typer.Option(
+        False, "--version", "-V", callback=_version_callback, is_eager=True,
+        help="Muestra la versión y sale",
+    ),
 ) -> None:
     """Inicia el terminal interactivo de T-100AI.
 
@@ -151,18 +242,61 @@ def main_entry(
       python -m t100ai.cli.main -m llama3.2 -s example.com
       python -m t100ai.cli.main --no-llm
     """
-    show_banner()
     cfg = _apply_config_and_confirm(config, debug, model, no_llm)
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    loop.run_until_complete(run_t100ai(cfg, scope))
+    loop.run_until_complete(run_t100ai(cfg, scope, no_banner=no_banner))
+
+
+@app.command("session")
+def session_command(
+    args: Optional[List[str]] = typer.Argument(
+        None, help="save [nombre] | load <id> | list | export <id> <formato>"
+    ),
+) -> None:
+    """Gestiona sesiones guardadas (save/load/list/export)."""
+    from t100ai.cli.session_commands import handle_session_command
+
+    handle_session_command(list(args or []))
+
+
+@app.command("doctor")
+def doctor(
+    json_out: bool = typer.Option(False, "--json", help="Salida en JSON"),
+) -> None:
+    """Diagnóstico del entorno: Python, dependencias, config, sandbox y Ollama."""
+    from t100ai.cli.doctor import run_checks
+
+    results = run_checks()
+    if json_out:
+        import json
+
+        console.print_json(json.dumps(results))
+    else:
+        icons = {
+            "ok": "[#00FF88]●[/]",
+            "warn": "[#FFD60A]●[/]",
+            "fail": "[#FF3366]●[/]",
+            "skip": "[#8B949E]●[/]",
+        }
+        table = Table(title="◈ T-100AI doctor — diagnóstico del entorno", border_style="#00D4FF")
+        table.add_column("", width=2)
+        table.add_column("Comprobación", style="#00D4FF")
+        table.add_column("Estado", width=8)
+        table.add_column("Detalle", style="#8B949E")
+        for r in results:
+            table.add_row(icons.get(r["status"], "?"), r["check"], r["status"], r["detail"])
+        console.print(table)
+    if any(r["status"] == "fail" for r in results):
+        raise typer.Exit(code=1)
 
 
 def _system_command_list() -> list[str]:
     """Return a list of system commands (non-slash built-ins)."""
     return [
-        "help", "version", "info", "workflow", "skill", "tool", "finding", "report", "mode", "clear", "history",
-        "exit", "quit", "salir",
+        "help", "version", "info", "doctor", "session", "workflow", "skill", "tool",
+        "finding", "report", "mode", "scope", "role", "model", "context", "wordlist",
+        "clear", "history", "perf", "exit", "quit", "salir",
     ]
 
 
@@ -187,127 +321,10 @@ def _show_help() -> None:
 
 
 def markdown_help() -> str:
-    """Ayuda honesta: exactamente los comandos que CommandRouter soporta."""
-    return f"""
-# ◈ T-100AI — Ayuda de Comandos
+    """Ayuda honesta: delega en la fuente única (core.help_text)."""
+    from t100ai.core.help_text import markdown_help as _markdown_help
 
-**T-100AI** · AI-Powered Offensive Security Terminal · v{VERSION}
-
----
-
-## SESIÓN Y ALCANCE
-| Comando | Descripción |
-|---|---|
-| `/session` | Información de la sesión actual |
-| `/scope set [ip/cidr/domain]` | Definir el scope de la operación |
-| `/scope show` | Mostrar scope actual |
-| `/scope clear` | Limpiar scope |
-| `/save [archivo]` | Guardar código/hallazgos de la sesión |
-
-## ROLES Y MODOS
-| Comando | Descripción |
-|---|---|
-| `/role set [nombre]` | Cambiar rol activo |
-| `/role show` | Mostrar rol actual |
-| `/role list` | Listar roles disponibles |
-| `/mode paranoid` | Confirmación en TODAS las acciones |
-| `/mode standard` | Modo estándar (por defecto) |
-| `/mode expert` | Auto-ejecución sin confirmaciones |
-
-Roles disponibles: `pentester` · `red-teamer` · `blue-teamer` · `ctf-player` · `forensic`
-
-## SKILLS Y HERRAMIENTAS
-| Comando | Descripción |
-|---|---|
-| `/skill list` | Listar skills disponibles |
-| `/skill use [nombre]` | Activar skill específico |
-| `/skill info [nombre]` | Info detallada de un skill |
-| `/tools` | Listar herramientas MCP disponibles |
-
-Skills: `recon` · `osint` · `web` · `exploit` · `postex` · `forense` · `ad` · `report`
-
-## MODELO DE IA
-| Comando | Descripción |
-|---|---|
-| `/model info` | Info del modelo activo |
-| `/model switch [nombre]` | Cambiar modelo Ollama |
-| `/model list` | Listar modelos instalados en Ollama |
-
-## HALLAZGOS
-| Comando | Descripción |
-|---|---|
-| `/findings show` | Ver todos los hallazgos registrados |
-| `/findings add [sev] [título]` | Añadir hallazgo manual (ej: `HIGH MySQL expuesto`) |
-| `/findings score [id] [cvss]` | Asignar score CVSS a un hallazgo |
-
-## REPORTES Y LOGS
-| Comando | Descripción |
-|---|---|
-| `/report generate` | Generar informe final (markdown) |
-| `/report preview` | Vista previa del informe |
-| `/report session` | Resumen de la sesión |
-| `/report export [formato]` | Exportar informe |
-| `/log show` | Ver log de acciones de sesión |
-| `/log export` | Exportar log completo |
-
-## CONTEXTO Y HISTORIAL
-| Comando | Descripción |
-|---|---|
-| `/context show` | Ver historial conversacional en memoria |
-| `/context clear` | Limpiar historial (mantiene hallazgos) |
-| `/history [query]` | Historial de comandos del terminal |
-| `/perf` | Estadísticas de rendimiento |
-
-## AGENTES, WORKFLOWS Y PLUGINS
-| Comando | Descripción |
-|---|---|
-| `/agent list` | Listar agentes disponibles |
-| `/agent spawn [tarea]` | Desplegar tarea en un agente |
-| `/agent status` | Estado del orquestador |
-| `/workflow list` | Listar workflows disponibles |
-| `/workflow run [nombre]` | Ejecutar workflow completo |
-| `/workflow status` | Estado del workflow en curso |
-| `/deploy task [desc]` | Desplegar tarea al orquestador |
-| `/plugin list` | Listar plugins |
-| `/plugin search [query]` | Buscar plugins |
-| `/plugin install [nombre]` | Instalar plugin |
-
-## UTILIDADES
-| Comando | Descripción |
-|---|---|
-| `/wordlist dir|subdomain|user|pass|sql|xss|lfi|cve` | Wordlists integradas |
-| `/read [archivo]` | Leer un archivo y mostrarlo |
-| `help` / `/help` | Mostrar esta ayuda |
-| `/clear` | Limpiar pantalla |
-| `exit` / `quit` | Cerrar T-100AI |
-
----
-
-## CONTROL DE SISTEMA (LLM)
-
-El LLM puede ejecutar comandos reales usando la sintaxis:
-
-```
-<cmd>nmap -sV 192.168.1.1</cmd>
-```
-
-Se pedirá confirmación antes de ejecutar cada comando (excepto en modo `expert`).
-El output se analiza automáticamente y el LLM propone los siguientes pasos.
-El sandbox valida scope, rate-limit y bloquea comandos destructivos.
-
----
-
-## ENTRADA NATURAL
-
-Todo lo que no sea un comando `/cmd` se procesa como lenguaje natural:
-
-```
-escanea los puertos de 192.168.1.1
-tengo este hash: $2y$10$abc...
-explícame el ataque Kerberoasting
-inicia un pentest completo contra 10.0.0.0/24
-```
-"""
+    return _markdown_help(VERSION)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -447,6 +464,7 @@ def show_banner() -> None:
     console.print()
     console.print(SUBTITLE)
     console.print(TAGLINE)
+    console.print(f"[#8B949E]v{VERSION} · uso exclusivo en sistemas con autorización explícita[/]")
     console.print()
     sys.stdout.flush()
 
@@ -454,8 +472,11 @@ def show_banner() -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 # REPL
 # ─────────────────────────────────────────────────────────────────────────────
-async def run_t100ai(cfg: T100AIConfig, initial_scope: Optional[str] = None) -> None:
+async def run_t100ai(cfg, initial_scope: Optional[str] = None, no_banner: bool = False) -> None:
     """Ejecuta la sesión principal de T-100AI"""
+    if not no_banner:
+        show_banner()
+
     session = Session()
     session.set_config(cfg)
 
@@ -480,8 +501,17 @@ async def run_t100ai(cfg: T100AIConfig, initial_scope: Optional[str] = None) -> 
         border_style="#00FF88"
     ))
 
-    console.print("\n[#8B949E]Escribe 'help' para ver comandos disponibles o 'exit' para salir.[/]\n")
+    console.print("\n[#8B949E]Escribe 'help' para ver comandos · TAB autocompleta · 'exit' para salir.[/]\n")
     sys.stdout.flush()
+
+    # Diagnóstico de errores accionable + readline (TAB/historial) una sola vez
+    try:
+        from t100ai.utils.errors import ErrorHandler
+
+        ErrorHandler.register_defaults()
+    except Exception:
+        pass
+    _setup_readline()
 
     # Loop principal
     consecutive_cancel = 0
@@ -526,6 +556,9 @@ async def run_t100ai(cfg: T100AIConfig, initial_scope: Optional[str] = None) -> 
             else:
                 await engine.process_input(user_input)
 
+            if getattr(engine, "_exit_requested", False):
+                break
+
         except KeyboardInterrupt:
             consecutive_cancel += 1
             if consecutive_cancel >= 2:
@@ -537,8 +570,8 @@ async def run_t100ai(cfg: T100AIConfig, initial_scope: Optional[str] = None) -> 
             console.print("\n[yellow]Entrada cerrada. Saliendo...[/]")
             break
         except Exception as e:
-            from t100ai.utils.errors import ErrorHandler, format_error
-            ErrorHandler.register_defaults()
+            from t100ai.utils.errors import format_error
+
             console.print(format_error(e))
 
 
