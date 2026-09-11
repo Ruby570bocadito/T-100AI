@@ -4,10 +4,8 @@ from __future__ import annotations
 
 import json
 import logging
-import os
-import tempfile
-import urllib.request
 import urllib.parse
+import urllib.request
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -90,19 +88,8 @@ class PluginMarketplace:
             plugin_file = dest / f"{name}.py"
             plugin_file.write_bytes(data)
 
-            # Create manifest
-            manifest = {
-                "name": plugin.name,
-                "version": plugin.version,
-                "description": plugin.description,
-                "author": plugin.author,
-                "min_specter_version": "1.0.0",
-                "entry_point": f"{name}.run",
-                "permissions": ["shell", "filesystem"],
-                "source": "marketplace",
-                "installed_at": datetime.now(timezone.utc).isoformat(),
-            }
-            (dest / "plugin.yaml").write_text(
+            # Create manifest (YAML a mano: evita dependencia obligatoria de pyyaml)
+            manifest_yaml = (
                 f"name: {plugin.name}\n"
                 f"version: {plugin.version}\n"
                 f"description: {plugin.description}\n"
@@ -110,7 +97,10 @@ class PluginMarketplace:
                 f"min_specter_version: '1.0.0'\n"
                 f"entry_point: {name}.run\n"
                 f"permissions:\n  - shell\n  - filesystem\n"
+                f"source: marketplace\n"
+                f"installed_at: '{datetime.now(timezone.utc).isoformat()}'\n"
             )
+            (dest / "plugin.yaml").write_text(manifest_yaml)
 
             logger.info(f"Plugin '{name}' installed from marketplace to {dest}")
             return True

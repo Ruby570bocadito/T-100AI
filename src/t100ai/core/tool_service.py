@@ -9,16 +9,16 @@ from rich.table import Table
 class ToolService:
     """
     Formats and displays command output from various pentesting tools.
-    
+
     Extracted from T100AIEngine to isolate presentation concerns:
     - nmap, gobuster, nikto, sqlmap, hydra output formatters
     - Generic output display
     - Finding parsing from command results
     """
-    
+
     def __init__(self, console: Console):
         self._console = console
-    
+
     def display_command_output(self, cmd: str, output: str, error: str, returncode: int) -> None:
         """Dispatches to the appropriate formatter based on command type."""
         cmd_lower = cmd.lower()
@@ -36,7 +36,7 @@ class ToolService:
             self.display_hydra_output(output, error, returncode)
         else:
             self.display_generic_output(output, error, returncode)
-    
+
     def display_nmap_output(self, output: str, error: str, returncode: int) -> None:
         if "PORT" in output and "STATE" in output:
             table = Table(title="Resultados del Escaneo", border_style="#00D4FF")
@@ -58,7 +58,7 @@ class ToolService:
                 self.display_generic_output(output, error, returncode)
         else:
             self.display_generic_output(output, error, returncode)
-    
+
     def display_dir_fuzz_output(self, output: str, error: str, returncode: int) -> None:
         table = Table(title="Directorios/Archivos Encontrados", border_style="#00D4FF")
         table.add_column("URL", style="#00FF88")
@@ -81,7 +81,7 @@ class ToolService:
             self._console.print(f"[dim]Recursos encontrados: {found_count}[/]")
         else:
             self.display_generic_output(output, error, returncode)
-    
+
     def display_nikto_output(self, output: str, error: str, returncode: int) -> None:
         table = Table(title="Vulnerabilidades Web (Nikto)", border_style="#FF6B35")
         table.add_column("Severidad", style="#FFD60A")
@@ -99,7 +99,7 @@ class ToolService:
             self._console.print(f"[yellow]Vulnerabilidades potenciales: {vuln_count}[/]")
         else:
             self.display_generic_output(output, error, returncode)
-    
+
     def display_tech_output(self, output: str, error: str, returncode: int) -> None:
         table = Table(title="Tecnologias Detectadas", border_style="#00D4FF")
         table.add_column("Tecnologia", style="#00FF88")
@@ -118,7 +118,7 @@ class ToolService:
             self._console.print(f"[dim]Tecnologias identificadas: {tech_count}[/]")
         else:
             self.display_generic_output(output, error, returncode)
-    
+
     def display_sqlmap_output(self, output: str, error: str, returncode: int) -> None:
         if any(x in output.lower() for x in ["vulnerable", "injection", "parameter"]):
             self._console.print(Panel.fit(
@@ -129,7 +129,7 @@ class ToolService:
             ))
         else:
             self.display_generic_output(output, error, returncode)
-    
+
     def display_hydra_output(self, output: str, error: str, returncode: int) -> None:
         if "login:" in output and "password:" in output:
             self._console.print(Panel.fit(
@@ -140,7 +140,7 @@ class ToolService:
             ))
         else:
             self.display_generic_output(output, error, returncode)
-    
+
     def display_generic_output(self, output: str, error: str, returncode: int) -> None:
         if output:
             syntax = Syntax(output[:3000], "text", theme="monokai", line_numbers=True)
@@ -148,7 +148,7 @@ class ToolService:
         if error:
             self._console.print(Panel(f"[#FF3366]{error[:500]}[/]", title="Error", border_style="#FF3366"))
         self._console.print(f"[dim]Exit code: {returncode}[/]")
-    
+
     def parse_command_results(self, cmd: str, output: str, error: str, returncode: int) -> list[dict]:
         """Parse command results and return potential findings data."""
         findings = []
@@ -172,7 +172,7 @@ class ToolService:
                             "detail": line
                         })
         return findings
-    
+
     def display_findings_summary(self, findings: list[dict]) -> None:
         if not findings:
             return

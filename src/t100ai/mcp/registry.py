@@ -1,11 +1,12 @@
 """MCP Tool Registry with caching"""
 
-import structlog
 import shutil
 import time
-import functools
 from typing import Optional
-from t100ai.mcp.tool import MCPTool, ToolParameter, ToolResult, RiskLevel
+
+import structlog
+
+from t100ai.mcp.tool import MCPTool, ToolParameter
 
 logger = structlog.get_logger()
 
@@ -30,28 +31,28 @@ def cached(ttl: int = 3600):
 
 class ToolRegistry:
     """Registry central de herramientas MCP con caché"""
-    
+
     def __init__(self, cache_ttl: int = 3600):
         self.tools: dict[str, MCPTool] = {}
         self._cache: dict[str, tuple[MCPTool, float]] = {}
         self._cache_ttl = cache_ttl
         self._discovery_cache: Optional[tuple[list[MCPTool], float]] = None
-    
+
     async def discover_tools(self) -> None:
         """Descubre y registra todas las herramientas disponibles"""
         logger.info("Discovering MCP tools...")
-        
+
         # Registrar herramientas built-in
         self._register_builtin_tools()
-        
+
         # Descubrir herramientas del sistema
         self._discover_system_tools()
-        
+
         logger.info("Tools discovered", count=len(self.tools))
-    
+
     def _register_builtin_tools(self) -> None:
         """Registra herramientas built-in de T-100AI"""
-        
+
         # Herramientas de red - Observación
         self.register(MCPTool(
             name="network.port_scan",
@@ -60,7 +61,7 @@ class ToolRegistry:
             skill="recon",
             risk_level=1,
             parameters=[
-                ToolParameter(name="targets", type="string", required=True, 
+                ToolParameter(name="targets", type="string", required=True,
                              description="IPs o rangos CIDR objetivo"),
                 ToolParameter(name="port_range", type="string", default="1-1024",
                              description="Rango de puertos (ej: 80,443 o 1-65535)"),
@@ -74,7 +75,7 @@ class ToolRegistry:
             command="nmap",
             examples=["network.port_scan(targets='192.168.1.1', port_range='1-1000')"]
         ))
-        
+
         self.register(MCPTool(
             name="network.ping_sweep",
             description="Descubrimiento de hosts activos mediante ping",
@@ -87,7 +88,7 @@ class ToolRegistry:
             ],
             command="nmap -sn",
         ))
-        
+
         self.register(MCPTool(
             name="network.dns_enum",
             description="Enumeración de registros DNS",
@@ -103,7 +104,7 @@ class ToolRegistry:
             ],
             command="dig",
         ))
-        
+
         # Herramientas de sistema
         self.register(MCPTool(
             name="system.process_list",
@@ -117,7 +118,7 @@ class ToolRegistry:
             ],
             command="ps",
         ))
-        
+
         self.register(MCPTool(
             name="system.network_conns",
             description="Lista conexiones de red activas",
@@ -126,7 +127,7 @@ class ToolRegistry:
             risk_level=0,
             command="netstat",
         ))
-        
+
         # Hash tools
         self.register(MCPTool(
             name="hash.identify",
@@ -139,7 +140,7 @@ class ToolRegistry:
                              description="Hash a identificar"),
             ],
         ))
-        
+
         # CVE tools
         self.register(MCPTool(
             name="cve.lookup",
@@ -152,7 +153,7 @@ class ToolRegistry:
                              description="ID del CVE (ej: CVE-2021-44228)"),
             ],
         ))
-        
+
         # Vulnerabilidad tools
         self.register(MCPTool(
             name="vuln.scan",
@@ -169,7 +170,7 @@ class ToolRegistry:
             ],
             command="nmap --script vuln",
         ))
-        
+
         # Password tools
         self.register(MCPTool(
             name="password.hash_crack",
@@ -185,7 +186,7 @@ class ToolRegistry:
             ],
             command="hashcat",
         ))
-        
+
         # Herramientas de explotación
         self.register(MCPTool(
             name="exploit.run",
@@ -200,7 +201,7 @@ class ToolRegistry:
                              description="Ruta al exploit o nombre del módulo"),
             ],
         ))
-        
+
         # Web tools
         self.register(MCPTool(
             name="web.dir_fuzz",
@@ -216,7 +217,7 @@ class ToolRegistry:
             ],
             command="gobuster",
         ))
-        
+
         self.register(MCPTool(
             name="web.sqlmap",
             description="Test de inyección SQL automatizado",
@@ -231,10 +232,10 @@ class ToolRegistry:
             ],
             command="sqlmap",
         ))
-    
+
     def _discover_system_tools(self) -> None:
         """Descubre herramientas disponibles en el sistema"""
-        
+
         # Verificar herramientas de red
         tools_to_check = [
             ("nmap", "network"),
@@ -252,33 +253,33 @@ class ToolRegistry:
             ("wireshark", "network"),
             ("tcpdump", "network"),
         ]
-        
+
         discovered = []
         for tool, category in tools_to_check:
             if shutil.which(tool):
                 discovered.append((tool, category))
-        
+
         logger.debug("System tools discovered", tools=discovered)
-    
+
     def register(self, tool: MCPTool) -> None:
         """Registra una herramienta"""
         self.tools[tool.name] = tool
         logger.debug("Tool registered", name=tool.name)
-    
+
     def get_tool(self, name: str) -> Optional[MCPTool]:
         """Obtiene una herramienta por nombre"""
         return self.tools.get(name)
-    
+
     def list_tools(self, category: Optional[str] = None) -> list[MCPTool]:
         """Lista herramientas, opcionalmente filtradas por categoría"""
         if category:
             return [t for t in self.tools.values() if t.category == category]
         return list(self.tools.values())
-    
+
     def list_by_risk_level(self, level: int) -> list[MCPTool]:
         """Lista herramientas por nivel de riesgo"""
         return [t for t in self.tools.values() if t.risk_level == level]
-    
+
     def search(self, query: str) -> list[MCPTool]:
         """Busca herramientas por nombre o descripción"""
         query = query.lower()
@@ -306,7 +307,7 @@ class ToolRegistry:
         if cached_tool is not None:
             logger.debug("Tool cache hit", tool=name)
             return cached_tool
-        
+
         tool = self.tools.get(name)
         if tool is not None:
             self._set_cached_tool(name, tool)

@@ -1,16 +1,14 @@
 """PostEx - Post Exploitation Skill."""
 
 import asyncio
-import json
 import os
 import shutil
-import subprocess
 import time
 from typing import Any
 
 import structlog
 
-from t100ai.skills.base import BaseSkill, SkillResult, RiskLevel
+from t100ai.skills.base import BaseSkill, RiskLevel, SkillResult
 
 logger = structlog.get_logger()
 
@@ -161,7 +159,7 @@ class PostExSkill(BaseSkill):
     async def _mimikatz(self, params: dict, start: float) -> SkillResult:
         """Ejecuta mimikatz para extracción de credenciales Windows."""
         commands = params.get("commands", "sekurlsa::logonPasswords exit")
-        cmd = ["mimikatz", f"privilege::debug", commands]
+        cmd = ["mimikatz", "privilege::debug", commands]
         return await self._run_postex_tool(cmd, "mimikatz", start, params)
 
     async def _hash_dump(self, params: dict, start: float) -> SkillResult:

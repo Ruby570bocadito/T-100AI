@@ -1,13 +1,15 @@
 """MCP Tool Registry Avanzado con Templates, Chaining, Auto-discovery y Parsers"""
 
-import structlog
+import re
 import shutil
 import time
-import re
-from typing import Optional, Callable, Any
 from dataclasses import dataclass, field
 from pathlib import Path
-from t100ai.mcp.tool import MCPTool, ToolParameter, ToolResult, RiskLevel
+from typing import Callable, Optional
+
+import structlog
+
+from t100ai.mcp.tool import MCPTool, ToolParameter
 
 logger = structlog.get_logger()
 
@@ -34,7 +36,7 @@ class ToolChain:
 
 class OutputParser:
     """Parser de outputs para diferentes herramientas"""
-    
+
     @staticmethod
     def nmap(output: str) -> dict:
         """Parser específico para nmap"""
@@ -44,7 +46,7 @@ class OutputParser:
             "services": [],
             "vulnerabilities": []
         }
-        
+
         for line in output.split("\n"):
             line = line.strip()
             if "/tcp" in line or "/udp" in line:
@@ -68,9 +70,9 @@ class OutputParser:
                 match = re.search(r"for (.+?) \(", line)
                 if match:
                     result["hosts"].append(match.group(1))
-        
+
         return result
-    
+
     @staticmethod
     def gobuster(output: str) -> dict:
         """Parser para gobuster/dirb"""
@@ -79,7 +81,7 @@ class OutputParser:
             "files": [],
             "status_codes": {}
         }
-        
+
         for line in output.split("\n"):
             if "Status:" in line or "(Status:" in line:
                 match = re.search(r"(https?://[^\s]+)", line)
@@ -87,16 +89,16 @@ class OutputParser:
                     url = match.group(1)
                     code_match = re.search(r"\((\d+)\)", line)
                     code = code_match.group(1) if code_match else "?"
-                    
+
                     if url.endswith("/"):
                         result["directories"].append({"url": url, "code": code})
                     else:
                         result["files"].append({"url": url, "code": code})
-                    
+
                     result["status_codes"][code] = result["status_codes"].get(code, 0) + 1
-        
+
         return result
-    
+
     @staticmethod
     def nikto(output: str) -> dict:
         """Parser para Nikto"""
@@ -104,16 +106,16 @@ class OutputParser:
             "findings": [],
             "vulnerabilities": []
         }
-        
+
         for line in output.split("\n"):
             if "+ " in line and any(x in line for x in ["OSVDB", "CVE", "WARNING"]):
                 finding = line[2:].strip()
                 result["findings"].append(finding)
                 if "WARNING" in line:
                     result["vulnerabilities"].append(finding)
-        
+
         return result
-    
+
     @staticmethod
     def hydra(output: str) -> dict:
         """Parser para Hydra"""
@@ -121,7 +123,7 @@ class OutputParser:
             "credentials": [],
             "success": False
         }
-        
+
         for line in output.split("\n"):
             if "[80][http-post-form]" in line or "login:" in line.lower():
                 if "password" in line.lower():
@@ -132,9 +134,9 @@ class OutputParser:
                             "password": match.group(2)
                         })
                         result["success"] = True
-        
+
         return result
-    
+
     @staticmethod
     def default(output: str) -> dict:
         """Parser por defecto"""
@@ -143,7 +145,7 @@ class OutputParser:
             "lines": len(output.split("\n")),
             "length": len(output)
         }
-    
+
     @staticmethod
     def nuclei(output: str) -> dict:
         """Parser para Nuclei"""
@@ -154,7 +156,7 @@ class OutputParser:
             "medium": 0,
             "low": 0
         }
-        
+
         for line in output.split("\n"):
             if "[CRITICAL]" in line or "[CRIT]" in line:
                 result["critical"] += 1
@@ -168,9 +170,9 @@ class OutputParser:
             elif "[LOW]" in line:
                 result["low"] += 1
                 result["findings"].append(("LOW", line.strip()))
-        
+
         return result
-    
+
     @staticmethod
     def ffuf(output: str) -> dict:
         """Parser para FFUF"""
@@ -178,7 +180,7 @@ class OutputParser:
             "urls": [],
             "status_codes": {}
         }
-        
+
         for line in output.split("\n"):
             parts = line.split()
             if len(parts) >= 2 and parts[0].isdigit():
@@ -186,9 +188,9 @@ class OutputParser:
                 result["status_codes"][status] = result["status_codes"].get(status, 0) + 1
                 if status.startswith("2"):
                     result["urls"].append(line.strip())
-        
+
         return result
-    
+
     @staticmethod
     def crackmapexec(output: str) -> dict:
         """Parser para CrackMapExec"""
@@ -198,7 +200,7 @@ class OutputParser:
             "credentials": [],
             "vulnerabilities": []
         }
-        
+
         for line in output.split("\n"):
             if not line.strip():
                 continue
@@ -208,9 +210,9 @@ class OutputParser:
                 result["shares"].append(line.strip())
             elif "Password" in line or "NTLM" in line:
                 result["credentials"].append(line.strip())
-        
+
         return result
-    
+
     @staticmethod
     def bloodhound(output: str) -> dict:
         """Parser para BloodHound"""
@@ -220,7 +222,7 @@ class OutputParser:
             "computers": [],
             "paths": []
         }
-        
+
         for line in output.split("\n"):
             if "User:" in line:
                 result["users"].append(line.strip())
@@ -230,9 +232,9 @@ class OutputParser:
                 result["computers"].append(line.strip())
             elif "Path:" in line or "->" in line:
                 result["paths"].append(line.strip())
-        
+
         return result
-    
+
     @staticmethod
     def sslscan(output: str) -> dict:
         """Parser para SSLscan"""
@@ -241,7 +243,7 @@ class OutputParser:
             "ciphers": [],
             "vulnerabilities": []
         }
-        
+
         in_ciphers = False
         for line in output.split("\n"):
             if "Certificate:" in line or "Subject:" in line:
@@ -254,9 +256,9 @@ class OutputParser:
                 result["vulnerabilities"].append(line.strip())
             elif in_ciphers and line.strip().startswith(" "):
                 result["ciphers"].append(line.strip())
-        
+
         return result
-    
+
     @staticmethod
     def testssl(output: str) -> dict:
         """Parser para testssl.sh"""
@@ -265,7 +267,7 @@ class OutputParser:
             "cve_list": [],
             "grades": []
         }
-        
+
         for line in output.split("\n"):
             if "VULNERABLE" in line:
                 result["findings"].append(line.strip())
@@ -273,9 +275,9 @@ class OutputParser:
                 result["cve_list"].extend(cve_match)
             elif "Rating:" in line or "Grade" in line:
                 result["grades"].append(line.strip())
-        
+
         return result
-    
+
     @staticmethod
     def dnsrecon(output: str) -> dict:
         """Parser para dnsrecon"""
@@ -283,15 +285,15 @@ class OutputParser:
             "records": [],
             "hosts": []
         }
-        
+
         for line in output.split("\n"):
             if any(rtype in line for rtype in ["A:", "AAAA:", "MX:", "NS:", "TXT:", "CNAME:", "SOA:"]):
                 result["records"].append(line.strip())
             elif "Host:" in line:
                 result["hosts"].append(line.strip())
-        
+
         return result
-    
+
     @staticmethod
     def hashcat(output: str) -> dict:
         """Parser para Hashcat"""
@@ -299,7 +301,7 @@ class OutputParser:
             "cracked": [],
             "hashes_left": 0
         }
-        
+
         for line in output.split("\n"):
             if "Cracked" in line or "Time.Started" in line:
                 continue
@@ -309,9 +311,9 @@ class OutputParser:
                 match = re.search(r"(\d+)", line)
                 if match:
                     result["hashes_left"] = int(match.group(1))
-        
+
         return result
-    
+
     @staticmethod
     def volatility(output: str) -> dict:
         """Parser para Volatility"""
@@ -320,7 +322,7 @@ class OutputParser:
             "connections": [],
             "dlls": []
         }
-        
+
         in_processes = False
         in_connections = False
         for line in output.split("\n"):
@@ -337,15 +339,15 @@ class OutputParser:
                     result["connections"].append(line.strip())
                 elif "dll" in line.lower():
                     result["dlls"].append(line.strip())
-        
+
         return result
 
 
 class AdvancedToolRegistry:
     """Registry avanzado de herramientas MCP"""
-    
+
     TEMPLATES: dict[str, ToolTemplate] = {}
-    
+
     def __init__(self, cache_ttl: int = 3600):
         self.tools: dict[str, MCPTool] = {}
         self._cache: dict[str, tuple[MCPTool, float]] = {}
@@ -371,7 +373,7 @@ class AdvancedToolRegistry:
             "default": OutputParser.default,
         }
         self._init_templates()
-    
+
     def _init_templates(self):
         """Inicializa plantillas predefinidas"""
         self.TEMPLATES = {
@@ -448,22 +450,22 @@ class AdvancedToolRegistry:
                 risk_level=0
             ),
         }
-        
+
         for name, template in self.TEMPLATES.items():
             self._categories.setdefault(template.category, []).append(name)
-    
+
     def create_tool_from_template(self, template_name: str, custom_params: Optional[dict] = None) -> Optional[MCPTool]:
         """Crea una herramienta desde una plantilla"""
         if template_name not in self.TEMPLATES:
             return None
-        
+
         template = self.TEMPLATES[template_name]
         params = {**template.default_params, **(custom_params or {})}
-        
+
         command = template.command_template
         for key, value in params.items():
             command = command.replace(f"{{{key}}}", str(value))
-        
+
         tool = MCPTool(
             name=f"template.{template_name}",
             description=template.description,
@@ -472,7 +474,7 @@ class AdvancedToolRegistry:
             risk_level=template.risk_level,
             command=command,
         )
-        
+
         for param_name, param_value in params.items():
             tool.parameters.append(ToolParameter(
                 name=param_name,
@@ -480,9 +482,9 @@ class AdvancedToolRegistry:
                 default=str(param_value),
                 description=f"Parámetro {param_name}"
             ))
-        
+
         return tool
-    
+
     async def discover_tools(self) -> None:
         """Descubre y registra todas las herramientas"""
         logger.info("Discovering MCP tools...")
@@ -491,7 +493,7 @@ class AdvancedToolRegistry:
         self._discover_system_tools()
         self._discover_from_config()
         logger.info("Tools discovered", count=len(self.tools))
-    
+
     def _register_builtin_tools(self) -> None:
         """Registra herramientas built-in desde plantillas"""
         tool_templates = [
@@ -642,10 +644,10 @@ class AdvancedToolRegistry:
             ToolTemplate(name="cve_search", description="Búsqueda de CVEs", category="cve", command_template="cve_search {{keyword}}", default_params={}, output_parser="cve", risk_level=0),
             ToolTemplate(name="snyk_vuln", description="Análisis de vulnerabilidades", category="cve", command_template="snyk test --json", default_params={}, output_parser="snyk", risk_level=0),
         ]
-        
+
         for template in tool_templates:
             self.TEMPLATES[template.name] = template
-            
+
             tool = MCPTool(
                 name=template.name,
                 description=template.description,
@@ -656,12 +658,12 @@ class AdvancedToolRegistry:
                 execution_modes=["fast", "stealth", "loud"],
                 output_parser=template.output_parser,
             )
-            
+
             self._add_chaining_rules(tool)
             self.tools[tool.name] = tool
-        
+
         logger.info("Registered builtin tools", count=len(tool_templates))
-    
+
     def _add_chaining_rules(self, tool: MCPTool) -> None:
         """Añade reglas de encadenamiento basadas en la categoría"""
         chain_map = {
@@ -675,12 +677,12 @@ class AdvancedToolRegistry:
             "exploit": {"output_to": ["postex", "forense"]},
             "postex": {"output_to": ["ad", "exploit"]},
         }
-        
+
         category = tool.category.split("/")[0]
         if category in chain_map:
             tool.output_to = chain_map[category].get("output_to", [])
             tool.input_from = chain_map[category].get("input_from", [])
-    
+
     def _discover_from_config(self) -> None:
         """Descubre herramientas desde configuración"""
         config_paths = [
@@ -688,7 +690,7 @@ class AdvancedToolRegistry:
             Path("~/.specter/tools.toml").expanduser(),
             Path("t100ai/config/tools.toml"),
         ]
-        
+
         for config_path in config_paths:
             if config_path.exists():
                 try:
@@ -699,7 +701,7 @@ class AdvancedToolRegistry:
                         self.register(tool)
                 except Exception as e:
                     logger.warning("Failed to load tools from config", path=str(config_path), error=str(e))
-    
+
     def _discover_system_tools(self) -> None:
         """Auto-descubre herramientas del sistema"""
         tools_map = {
@@ -728,46 +730,46 @@ class AdvancedToolRegistry:
             "testssl": "web/ssl",
             "sslscan": "web/ssl",
         }
-        
+
         discovered = []
         for tool_name, category in tools_map.items():
             if shutil.which(tool_name):
                 discovered.append((tool_name, category))
                 logger.debug("System tool discovered", tool=tool_name, category=category)
-        
+
         logger.info("System tools discovered", count=len(discovered))
-    
+
     def register_chain(self, chain: ToolChain) -> None:
         """Registra un encadenamiento de herramientas"""
         self._chains[chain.name] = chain
         logger.info("Tool chain registered", name=chain.name, steps=len(chain.steps))
-    
+
     def execute_chain(self, chain_name: str, initial_params: dict) -> list[dict]:
         """Ejecuta un chain de herramientas"""
         if chain_name not in self._chains:
             return [{"error": f"Chain '{chain_name}' not found"}]
-        
+
         chain = self._chains[chain_name]
         results = []
         context = {**initial_params}
-        
+
         for step in chain.steps:
             tool_name = step.get("tool", "")
             params = step.get("params", {})
-            
+
             for key, value in params.items():
                 if isinstance(value, str) and value.startswith("$"):
                     ref = value[1:]
                     params[key] = context.get(ref, value)
-            
+
             tool = self.get_tool(tool_name)
             if tool and tool.command:
                 result = {"tool": tool_name, "command": tool.command, "success": True}
                 results.append(result)
                 context[tool_name] = result
-        
+
         return results
-    
+
     def parse_output(self, tool_name: str, output: str) -> dict:
         """Parsea el output de una herramienta"""
         parser_name = "default"
@@ -775,13 +777,13 @@ class AdvancedToolRegistry:
             if name in tool_name.lower():
                 parser_name = name
                 break
-        
+
         return self._parsers[parser_name](output)
-    
+
     def get_categories(self) -> dict[str, list[str]]:
         """Retorna las categorías organizadas jerárquicamente"""
         return self._categories
-    
+
     def list_by_category(self, category_path: str) -> list[MCPTool]:
         """Lista herramientas por categoría (ej: 'web', 'web/vuln')"""
         results = []
@@ -789,41 +791,41 @@ class AdvancedToolRegistry:
             if tool.category.startswith(category_path):
                 results.append(tool)
         return results
-    
+
     def register(self, tool: MCPTool) -> None:
         """Registra una herramienta"""
         self.tools[tool.name] = tool
         self._update_categories(tool)
         logger.debug("Tool registered", name=tool.name)
-    
+
     def _update_categories(self, tool: MCPTool) -> None:
         """Actualiza el índice de categorías"""
         if tool.category not in self._categories:
             self._categories[tool.category] = []
         if tool.name not in self._categories[tool.category]:
             self._categories[tool.category].append(tool.name)
-    
+
     def get_tool(self, name: str) -> Optional[MCPTool]:
         """Obtiene una herramienta por nombre"""
         return self.tools.get(name)
-    
+
     def list_tools(self, category: Optional[str] = None) -> list[MCPTool]:
         """Lista herramientas"""
         if category:
             return self.list_by_category(category)
         return list(self.tools.values())
-    
+
     def list_templates(self) -> list[ToolTemplate]:
         """Lista plantillas disponibles"""
         return list(self.TEMPLATES.values())
-    
+
     def list_chains(self) -> list[dict]:
         """Lista chains disponibles"""
         return [
             {"name": name, "description": chain.description, "steps": len(chain.steps)}
             for name, chain in self._chains.items()
         ]
-    
+
     def search(self, query: str) -> list[MCPTool]:
         """Busca herramientas"""
         query = query.lower()
@@ -831,7 +833,7 @@ class AdvancedToolRegistry:
             t for t in self.tools.values()
             if query in t.name.lower() or query in t.description.lower()
         ]
-    
+
     def _get_cached_tool(self, name: str) -> Optional[MCPTool]:
         """Obtiene herramienta del caché"""
         if name in self._cache:
@@ -840,30 +842,30 @@ class AdvancedToolRegistry:
                 return tool
             del self._cache[name]
         return None
-    
+
     def _set_cached_tool(self, name: str, tool: MCPTool) -> None:
         """Guarda herramienta en caché"""
         self._cache[name] = (tool, time.time())
-    
+
     def get_tool_cached(self, name: str) -> Optional[MCPTool]:
         """Obtiene herramienta con caché"""
         cached_tool = self._get_cached_tool(name)
         if cached_tool is not None:
             logger.debug("Tool cache hit", tool=name)
             return cached_tool
-        
+
         tool = self.tools.get(name)
         if tool is not None:
             self._set_cached_tool(name, tool)
         return tool
-    
+
     def invalidate_cache(self, tool_name: Optional[str] = None) -> None:
         """Invalida el caché"""
         if tool_name:
             self._cache.pop(tool_name, None)
         else:
             self._cache.clear()
-    
+
     def get_cache_stats(self) -> dict:
         """Estadísticas del caché"""
         return {
@@ -877,5 +879,4 @@ class AdvancedToolRegistry:
 
 
 # ToolRegistry alias for backwards compatibility
-from t100ai.mcp.registry import ToolRegistry as _OriginalToolRegistry  # noqa: F401
 ToolRegistry = AdvancedToolRegistry  # noqa: F811

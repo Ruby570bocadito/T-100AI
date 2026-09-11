@@ -7,7 +7,6 @@ Handles specter.log, audit.log, permissions.log, and any other log files.
 from __future__ import annotations
 
 import gzip
-import os
 import shutil
 import threading
 import time

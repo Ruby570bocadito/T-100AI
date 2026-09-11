@@ -1,8 +1,7 @@
 """Tests for OSINT skill."""
-import pytest
 
-from t100ai.skills.osint import OsintSkill, OSINT_RATE_LIMIT
-from t100ai.skills.base import SkillResult, RiskLevel
+from t100ai.skills.base import RiskLevel
+from t100ai.skills.osint import OSINT_RATE_LIMIT, OsintSkill
 
 
 def test_osint_skill_creation():

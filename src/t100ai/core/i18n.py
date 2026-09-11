@@ -2,7 +2,6 @@
 
 from typing import Optional
 
-
 TRANSLATIONS: dict[str, dict[str, str]] = {
     "en": {
         # UI Strings

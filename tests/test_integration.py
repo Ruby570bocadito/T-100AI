@@ -1,19 +1,21 @@
 """Integration Tests - Full flow: engine -> skill -> tool"""
-import pytest
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
 
-from t100ai.core.session import Session, Finding, ScopeEntry
-from t100ai.core.config import T100AIConfig
-from t100ai.skills.base import BaseSkill, SkillResult, RiskLevel
-from t100ai.mcp.tool import MCPTool, ToolParameter
-from t100ai.mcp.registry import ToolRegistry
+import pytest
+
 from t100ai.agents.orchestrator import (
-    AgentOrchestrator, SmartOrchestrator,
-    ReconAgent, ExploitAgent, AnalystAgent, ReporterAgent,
-    AgentRole, AgentStatus, AgentTask,
+    AgentOrchestrator,
+    AgentRole,
+    AgentTask,
+    AnalystAgent,
+    ExploitAgent,
+    ReconAgent,
+    ReporterAgent,
+    SmartOrchestrator,
 )
-
+from t100ai.core.session import Finding, Session
+from t100ai.mcp.registry import ToolRegistry
+from t100ai.skills.base import SkillResult
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Skill Integration Tests
@@ -251,7 +253,6 @@ def test_session_findings_by_severity():
 @pytest.mark.asyncio
 async def test_run_cmd_echo():
     """Test command execution with a simple echo command"""
-    import asyncio
     proc = await asyncio.create_subprocess_exec(
         "echo", "hello",
         stdout=asyncio.subprocess.PIPE,
@@ -265,7 +266,6 @@ async def test_run_cmd_echo():
 @pytest.mark.asyncio
 async def test_run_cmd_nonexistent_tool():
     """Test command execution with a nonexistent tool"""
-    import asyncio
     proc = await asyncio.create_subprocess_exec(
         "false",
         stdout=asyncio.subprocess.PIPE,

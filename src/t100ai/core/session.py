@@ -1,13 +1,17 @@
 """T-100AI Session Management"""
 
-from datetime import datetime, timezone
-from typing import Optional, Any
-from dataclasses import dataclass, field
-from enum import Enum
-import uuid
 import json
+import uuid
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from enum import Enum
 from pathlib import Path
+from typing import TYPE_CHECKING, Any, Optional
+
 from t100ai.core.permissions import PermissionLevel
+
+if TYPE_CHECKING:
+    from t100ai.core.config import T100AIConfig
 
 
 MAX_HISTORY = 20
@@ -35,7 +39,7 @@ class Finding:
     target: Optional[str] = None
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     evidence: list[str] = field(default_factory=list)
-    
+
     def __str__(self) -> str:
         return f"[{self.severity}] {self.title}"
 
@@ -65,19 +69,19 @@ class Session:
     conversation_history: list[dict[str, str]] = field(default_factory=list)
 
     context: dict[str, Any] = field(default_factory=dict)
-    
+
     def __post_init__(self):
         self.config: Optional[Any] = None
-    
+
     def set_config(self, config: "T100AIConfig") -> None:
         """Establece la configuración"""
         self.config = config
-    
+
     def add_finding(self, finding: Finding) -> None:
         """Añade un hallazgo a la sesión"""
         self.findings.append(finding)
         self._log_action("finding_added", {"finding_id": finding.id})
-    
+
     def add_to_scope(self, target: str, target_type: str = "ip", notes: str = "") -> None:
         """Añade un objetivo al scope"""
         entry = ScopeEntry(target=target, type=target_type, notes=notes)
@@ -225,8 +229,8 @@ class Session:
             "",
             "## Findings Summary",
             "",
-            f"| Severity | Count |",
-            f"|---|---|",
+            "| Severity | Count |",
+            "|---|---|",
             f"| CRIT | {self.findings_count['CRIT']} |",
             f"| HIGH | {self.findings_count['HIGH']} |",
             f"| MED | {self.findings_count['MED']} |",

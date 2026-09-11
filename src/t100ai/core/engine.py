@@ -1,27 +1,26 @@
 """T-100AI Core Engine - Orquestador Principal"""
 
 import asyncio
-import sys
 import time
 from datetime import datetime
-from typing import TYPE_CHECKING, Optional, Any
+from typing import TYPE_CHECKING, Optional
 
-from t100ai.core.permissions import PermissionManager, PermissionLevel
-from t100ai.utils.audit import AuditLogger
-from t100ai.utils.logging import setup_logging
 import structlog
 from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
-from t100ai.core.session import Session, Finding
 from t100ai.core.config import T100AIConfig
+from t100ai.core.permissions import PermissionLevel, PermissionManager
+from t100ai.core.session import Finding, Session
+from t100ai.utils.audit import AuditLogger
+from t100ai.utils.logging import setup_logging
 
 if TYPE_CHECKING:
-    from t100ai.skills import SkillManager
+    from t100ai.agents.orchestrator import SmartOrchestrator
     from t100ai.mcp import ToolRegistry
     from t100ai.mcp.advanced_registry import AdvancedToolRegistry
-    from t100ai.agents.orchestrator import SmartOrchestrator
+    from t100ai.skills import SkillManager
 
 logger = structlog.get_logger()
 
@@ -29,7 +28,7 @@ logger = structlog.get_logger()
 class T100AIEngine:
     """
     CORE ENGINE de T-100AI
-    
+
     Orquesta la interacción entre:
     - CLI (input del usuario)
     - LLM (razonamiento e interpretación)
@@ -37,7 +36,7 @@ class T100AIEngine:
     - Tools (herramientas MCP)
     - Session (contexto y memoria)
     """
-    
+
     def __init__(self, session: Session, config: T100AIConfig):
         self.session = session
         self.config = config
@@ -56,19 +55,19 @@ class T100AIEngine:
             setup_logging(level="INFO", log_file="src/t100ai/log/specter.log", json_output=True)
         except Exception:
             pass
-        
+
         # Command router (extracted from _handle_slash_command)
         from t100ai.core.command_router import CommandRouter
         self.command_router = CommandRouter(self)
-        
+
         # LLM service (extracted streaming logic)
         from t100ai.llm.service import LLMService
         self.llm_service = LLMService(self.console)
-        
+
         # Tool service (output formatting)
         from t100ai.core.tool_service import ToolService
         self.tool_service = ToolService(self.console)
-        
+
         # Persistent sandbox with all restrictions
         from t100ai.core.sandbox import CommandSandbox
         self.sandbox = CommandSandbox(
@@ -79,7 +78,7 @@ class T100AIEngine:
             rate_limit=2.0,
             log_dir=f"sessions/{self.session.id}",
         )
-        
+
         # Performance tracking
         self._perf_stats = {
             "total_input_processing_time": 0.0,
@@ -87,18 +86,18 @@ class T100AIEngine:
             "total_command_execution_time": 0.0,
             "interaction_count": 0,
         }
-    
+
     async def initialize(self) -> None:
         """Inicializa el motor de T-100AI"""
         if self._initialized:
             return
         logger.info("Initializing T-100AI Engine", session_id=self.session.id)
-        
-        from t100ai.skills import SkillManager
+
+        from t100ai.agents.orchestrator import SmartOrchestrator
         from t100ai.mcp import ToolRegistry
         from t100ai.mcp.advanced_registry import AdvancedToolRegistry
-        from t100ai.agents.orchestrator import SmartOrchestrator
-        
+        from t100ai.skills import SkillManager
+
         self.tool_registry = ToolRegistry()
         await self.tool_registry.discover_tools()
         self.advanced_tool_registry = AdvancedToolRegistry(self.tool_registry)
@@ -110,27 +109,27 @@ class T100AIEngine:
         )
         await self.skill_manager.load_skills()
         self._initialized = True
-        logger.info("T-100AI Engine initialized", 
+        logger.info("T-100AI Engine initialized",
                     tools_count=len(self.tool_registry.tools),
                     advanced_tools=len(self.advanced_tool_registry.tools))
-    
+
     async def process_input(self, user_input: str) -> None:
         """Procesa el input del usuario"""
         if user_input.startswith("/"):
             await self._handle_slash_command(user_input)
         else:
             await self._process_natural_language(user_input)
-    
+
     async def _process_natural_language(self, user_input: str) -> None:
         """Procesa input conversacional con el LLM usando streaming"""
         if not self.config.llm_enabled:
             self.console.print("[yellow]LLM deshabilitado. Usa /help para ver comandos.[/]")
             return
 
-        from t100ai.llm.prompt_builder import PromptBuilder
-        from t100ai.llm.connection_manager import OllamaConnectionManager, OllamaConnectionError
-        from rich.markdown import Markdown
         from rich.markup import escape as markup_escape
+
+        from t100ai.llm.connection_manager import OllamaConnectionError, OllamaConnectionManager
+        from t100ai.llm.prompt_builder import PromptBuilder
 
         detected_targets = self._auto_detect_scope(user_input)
         if detected_targets:
@@ -146,7 +145,7 @@ class T100AIEngine:
         try:
             cm = OllamaConnectionManager.get_instance()
             cm.update_config(self.config.ollama_host, self.config.ollama_model)
-            
+
             try:
                 cm.connect()
             except OllamaConnectionError as e:
@@ -167,7 +166,7 @@ class T100AIEngine:
 
             self.console.print()
             self.console.print(f"[#555555]◈ Modelo:[/] [#00D4FF]{markup_escape(self.config.ollama_model)}[/]")
-            
+
             response = await self._stream_response(
                 lambda: cm.generate_stream(user_input, system_prompt),
                 "Pensando"
@@ -177,29 +176,29 @@ class T100AIEngine:
                 if response.startswith("[cache]"):
                     response = response[7:response.find("[/cache]")]
                     self.console.print("[#555555][Cache hit][/]")
-                
+
                 self.session.add_message("assistant", response.strip())
                 self.console.print()
                 self._display_llm_response(response.strip())
-                
+
                 await self._execute_llm_commands(response, cm, system_prompt)
 
         except asyncio.CancelledError:
             self.console.print("\n[yellow]Operación cancelada por el usuario[/]")
         except Exception as exc:
             self.console.print(f"\n[bold #FF3366][!][/] [red]Fallo al consultar LLM:[/] {exc}")
-    
+
     async def _stream_response(self, stream_func, label: str) -> str:
         """Genera respuesta con streaming en tiempo real"""
         import threading
-        import time
+
         from rich.live import Live
         from rich.panel import Panel
-        
+
         result = {"chunks": [], "error": None, "done": False, "first_token": False}
         self._cancel_requested = False
         start_time = time.time()
-        
+
         def collect_stream():
             try:
                 for chunk in stream_func():
@@ -212,15 +211,15 @@ class T100AIEngine:
                 result["error"] = e
             finally:
                 result["done"] = True
-        
+
         thread = threading.Thread(target=collect_stream)
         thread.start()
-        
+
         def make_panel() -> Panel:
             elapsed = int(time.time() - start_time)
             tokens_count = len(result["chunks"])
             response_so_far = "".join(result["chunks"])
-            
+
             if not result["first_token"]:
                 content = f"[yellow]⏳ Cargando modelo...[/] [dim]({elapsed}s)[/]"
             else:
@@ -228,14 +227,14 @@ class T100AIEngine:
                     content = f"[green]◆ Generando[/] [cyan]{tokens_count} tokens[/] [dim]({elapsed}s)[/]\n\n{response_so_far}"
                 else:
                     content = f"[green]◆ Generando[/] [cyan]{tokens_count} tokens[/] [dim]({elapsed}s)[/]"
-            
+
             return Panel.fit(
                 content,
                 title=f"[bold]◈ {label}[/]",
                 border_style="#00D4FF",
                 width=80
             )
-        
+
         try:
             with Live(make_panel(), console=self.console, refresh_per_second=10, transient=True) as live:
                 while not result["done"]:
@@ -246,7 +245,7 @@ class T100AIEngine:
                     await asyncio.sleep(0.1)
         finally:
             thread.join(timeout=1)
-        
+
         if result["error"]:
             raise result["error"]
 
@@ -255,14 +254,14 @@ class T100AIEngine:
         self.console.print(f"[dim]✓ Completado: {tokens_count} tokens en {elapsed}s[/]")
         self.console.print()
         return "".join(result["chunks"])
-    
+
     async def _handle_slash_command(self, command: str) -> None:
         """Maneja comandos que empiezan con / — delega a CommandRouter."""
         await self.command_router.route(command)
-    
+
     async def process_interactive_input(self, user_input: str) -> None:
         """Procesa input en modo interactivo (después de ejecutar comando)
-        
+
         El usuario escribe libremente qué quiere hacer después.
         El sistema interpreta su intención y actúa accordingly.
         """
@@ -270,10 +269,9 @@ class T100AIEngine:
             self.console.print("[yellow]LLM deshabilitado. Usa /help para ver comandos.[/]")
             return
 
-        from t100ai.llm.prompt_builder import PromptBuilder
-        from t100ai.llm.client import OllamaClient
-        from rich.markdown import Markdown
         from rich.markup import escape as markup_escape
+
+        from t100ai.llm.prompt_builder import PromptBuilder
 
         user_input = user_input.strip()
         if not user_input:
@@ -309,19 +307,18 @@ class T100AIEngine:
 
         try:
             from t100ai.llm.connection_manager import OllamaConnectionManager
-            from rich.markup import escape as markup_escape
-            
+
             cm = OllamaConnectionManager.get_instance()
             cm.update_config(self.config.ollama_host, self.config.ollama_model)
-            
+
             if not cm._connected:
                 cm.connect()
 
             self.console.print()
             self.console.print(f"[#555555]◈ Modelo:[/] [#00D4FF]{markup_escape(self.config.ollama_model)}[/]")
-            
+
             self._display_orchestrator_activity()
-            
+
             response = await self._stream_response(
                 lambda: cm.generate_stream(interactive_prompt, system_prompt),
                 "Procesando"
@@ -331,7 +328,7 @@ class T100AIEngine:
                 self.session.add_message("assistant", response.strip())
                 self.console.print()
                 self._display_llm_response(response.strip())
-                
+
                 await self._execute_llm_commands(response, cm, system_prompt)
 
         except Exception as exc:
@@ -342,7 +339,7 @@ class T100AIEngine:
         self, response: str, client, system_prompt: str
     ) -> None:
         """Detecta bloques <cmd>...</cmd> o <code>...</code> y ejecuta comandos.
-        
+
         Características:
         - Detecta automáticamente si el usuario quiere leer archivos
         - Despliega agentes automáticamente para tareas complejas
@@ -350,24 +347,22 @@ class T100AIEngine:
         - Parsea resultados y sugiere hallazgos
         - Pide al usuario qué hacer después
         """
-        import re, asyncio
-        from pathlib import Path
-        from rich.table import Table
-        from rich.panel import Panel
-        from rich.syntax import Syntax
+        import re
+
         from rich.markdown import Markdown
+        from rich.panel import Panel
 
         user_input = self.session.conversation_history[-1]["content"] if self.session.conversation_history else ""
-        
+
         permission_mode = getattr(self.config, "permission_mode", "standard")
-        
+
         file_patterns = [
             r"^leer\s+([^\s]+)",
             r"^ver\s+([^\s]+)",
             r"^mostrar\s+([^\s]+)",
             r"^cat\s+([^\s]+)",
         ]
-        
+
         is_file_request = False
         for pattern in file_patterns:
             match = re.match(pattern, user_input.strip(), re.IGNORECASE)
@@ -382,17 +377,17 @@ class T100AIEngine:
                 self._handle_read_command(filepath)
                 is_file_request = True
                 break
-        
+
         if is_file_request:
             return
-        
+
         agent_patterns = [
             r"^despliega\s+(?:el\s+)?agente",
             r"^crea\s+(?:un\s+)?agente",
             r"^inicia\s+(?:el\s+)?agente",
             r"^ejecuta\s+agente",
         ]
-        
+
         is_agent_request = False
         for pattern in agent_patterns:
             if re.match(pattern, user_input.strip(), re.IGNORECASE):
@@ -406,7 +401,7 @@ class T100AIEngine:
                     await self._handle_agent_command("spawn", user_input)
                     is_agent_request = True
                     break
-        
+
         if is_agent_request:
             return
 
@@ -419,21 +414,19 @@ class T100AIEngine:
             cmd = raw_cmd.strip()
             if not cmd:
                 continue
-            
+
             invalid_patterns = [
                 r"^(comando|command|cmd|example|e\.g\.|example:|sample)$",
                 r"^<.*>$",
                 r"^\[.*\]$",
                 r"^[^a-zA-Z]*$",
             ]
-            
+
             is_invalid = any(re.match(p, cmd, re.IGNORECASE) for p in invalid_patterns)
             if is_invalid or len(cmd) < 3:
                 self.console.print(f"[yellow]Ignorando comando inválido: '{cmd}'[/]")
                 continue
 
-            from rich.panel import Panel
-            
             self.console.print()
             self.console.print(Panel.fit(
                 "[#00FF88]▶ COMANDO[/]\n"
@@ -460,7 +453,7 @@ class T100AIEngine:
                 continue
 
             self.console.print()
-            self.console.print(f"[bold #00FF88]▶ Ejecutando...[/]")
+            self.console.print("[bold #00FF88]▶ Ejecutando...[/]")
 
             output, error, returncode = await self._run_shell_command(cmd)
 
@@ -521,7 +514,7 @@ class T100AIEngine:
                 self.console.print()
                 from t100ai.llm.connection_manager import OllamaConnectionManager
                 cm = OllamaConnectionManager.get_instance()
-                
+
                 analysis = await self._stream_response(
                     lambda: cm.generate_stream(continue_prompt, system_prompt),
                     "Analizando"
@@ -569,7 +562,7 @@ class T100AIEngine:
 
     def _ask_next_action(self) -> tuple[str, str]:
         """Modo interactivo: muestra sugerencias y retorna acción
-        
+
         Returns:
             tuple: (action, user_input)
             - action: 'interactive'
@@ -596,9 +589,9 @@ class T100AIEngine:
         ))
 
         self.interactive_mode = True
-        
+
         choice = Prompt.ask("\n[#FFD60A]¿Qué deseas hacer?[/]", default="1")
-        
+
         choice_map = {
             "1": "continuar",
             "2": "analiza esto",
@@ -606,12 +599,11 @@ class T100AIEngine:
             "4": "estado",
             "5": "parar"
         }
-        
+
         return ("interactive", choice_map.get(choice.strip(), choice.strip()))
 
     async def _run_shell_command(self, cmd: str, source: str = "llm") -> tuple[str, str, int]:
         """Ejecuta un comando de shell con sandbox completo."""
-        import asyncio, subprocess, platform
 
         # Scope sync
         scope_targets = [e.target for e in self.session.scope]
@@ -664,7 +656,9 @@ class T100AIEngine:
 
     async def _exec_cmd(self, cmd: str) -> tuple[str, str, int]:
         """Ejecuta un comando y retorna (stdout, stderr, returncode)."""
-        import asyncio, subprocess, platform
+        import asyncio
+        import platform
+        import subprocess
         try:
             if platform.system() == "Windows":
                 shell_args = ["cmd.exe", "/c", cmd]
@@ -708,23 +702,23 @@ class T100AIEngine:
 
     async def _execute_batch(self, commands: list[str]) -> list[dict]:
         """Ejecuta múltiples comandos en paralelo.
-        
+
         Args:
             commands: Lista de comandos a ejecutar
-            
+
         Returns:
             Lista de diccionarios con {command, stdout, stderr, returncode, success}
         """
         import asyncio
-        
+
         if not commands:
             return []
-        
+
         self.console.print(f"[#00D4FF]▶ Ejecutando {len(commands)} comandos en paralelo...[/]")
-        
+
         tasks = [self._run_shell_command(cmd) for cmd in commands]
         results = await asyncio.gather(*tasks, return_exceptions=True)
-        
+
         batch_results = []
         for cmd, result in zip(commands, results):
             if isinstance(result, Exception):
@@ -744,48 +738,48 @@ class T100AIEngine:
                     "returncode": returncode,
                     "success": returncode == 0
                 })
-        
+
         successful = sum(1 for r in batch_results if r["success"])
         self.console.print(f"[#00FF88]✓[/] {successful}/{len(commands)} comandos completados")
-        
+
         return batch_results
 
     async def _execute_batch_with_dependencies(
-        self, 
+        self,
         commands: list[dict],
         max_concurrent: int = 5
     ) -> list[dict]:
         """Ejecuta comandos con dependencias y límite de concurrencia.
-        
+
         Args:
             commands: Lista de {command, depends_on: list[str]}
             max_concurrent: Número máximo de comandos simultáneos
-            
+
         Returns:
             Lista de resultados
         """
         import asyncio
-        
+
         if not commands:
             return []
-        
+
         results = {}
         running = set()
         completed = set()
-        
+
         async def run_command(cmd_item):
             cmd = cmd_item["command"]
             result = await self._run_shell_command(cmd)
             return cmd_item.get("id", cmd), result
-        
+
         while len(completed) < len(commands):
             available = [
-                c for c in commands 
+                c for c in commands
                 if c.get("id", c["command"]) not in completed
                 and all(d in completed for d in c.get("depends_on", []))
                 and c.get("id", c["command"]) not in running
             ]
-            
+
             if not available:
                 if running:
                     done, _ = await asyncio.wait(running, return_when=asyncio.FIRST_COMPLETED)
@@ -795,14 +789,14 @@ class T100AIEngine:
                         completed.add(cmd_id)
                         running.discard(task)
                 continue
-            
+
             batch = available[:max_concurrent]
             tasks = set()
             for cmd_item in batch:
                 task = asyncio.create_task(run_command(cmd_item))
                 running.add(task)
                 tasks.add(task)
-            
+
             if tasks:
                 done, _ = await asyncio.wait(tasks, return_when=asyncio.ALL_COMPLETED)
                 for task in done:
@@ -810,7 +804,7 @@ class T100AIEngine:
                     results[cmd_id] = result
                     completed.add(cmd_id)
                     running.discard(task)
-        
+
         return [
             {"command": c.get("id", c["command"]), "result": results.get(c.get("id", c["command"]))}
             for c in commands
@@ -819,10 +813,11 @@ class T100AIEngine:
     def _display_llm_response(self, response: str) -> None:
         """Muestra la respuesta del LLM con código compacto"""
         import re
+
         from rich.markdown import Markdown
 
         code_blocks = list(re.finditer(r"```(\w+)?\n(.*?)```", response, re.DOTALL))
-        
+
         if not code_blocks:
             self.console.print(Markdown(response))
             return
@@ -832,46 +827,54 @@ class T100AIEngine:
             text_before = response[last_end:match.start()]
             if text_before.strip():
                 self.console.print(Markdown(text_before))
-            
+
             lang = match.group(1) or "text"
             code = match.group(2).strip()
             filename = self._extract_filename_from_context(code, lang)
-            
+
             self._last_generated_code = {"code": code, "lang": lang, "filename": filename}
-            
+
             self._display_code_block(code, lang, filename)
-            
+
             last_end = match.end()
-        
+
         text_after = response[last_end:]
         if text_after.strip():
             self.console.print(Markdown(text_after))
-        
+
         if self._last_generated_code:
             self.console.print("[dim]Usa /save para guardar el codigo[/]")
-    
+
     def _display_orchestrator_activity(self) -> None:
         """Muestra actividad del orquestador con specter-mini"""
         if self.agent_orchestrator:
             agents = self.agent_orchestrator.list_agents()
             if agents:
-                self.console.print(f"[#444444]◈ Worker:[/] [#666666]specter-mini 1[/]")
-                self.console.print(f"[#444444]  Estado:[/] [#666666]Activo[/]")
-    
+                self.console.print("[#444444]◈ Worker:[/] [#666666]specter-mini 1[/]")
+                self.console.print("[#444444]  Estado:[/] [#666666]Activo[/]")
+
     def _display_code_block(self, code: str, lang: str, filename: str = "") -> None:
         """Muestra un bloque de código con tema oscuro elegante"""
-        from rich.syntax import Syntax
-        from rich.panel import Panel
-        from rich.style import Style
         from pygments.style import Style as PygmentsStyle
         from pygments.token import (
-            Keyword, Name, Comment, String, Error, Number, Operator, Generic,
-            Token, Whitespace, Punctuation
+            Comment,
+            Error,
+            Generic,
+            Keyword,
+            Name,
+            Number,
+            Operator,
+            Punctuation,
+            String,
+            Token,
+            Whitespace,
         )
-        
+        from rich.panel import Panel
+        from rich.syntax import Syntax
+
         lines = code.split("\n")
         is_short = len(lines) <= 5 and len(code) < 300
-        
+
         class DarkCodeStyle(PygmentsStyle):
             background_color = "#0d1117"
             styles = {
@@ -938,19 +941,19 @@ class T100AIEngine:
                 Token.Other: "#FF7B72",
                 Error: "#FF7B72",
             }
-        
+
         syntax = Syntax(
-            code, 
+            code,
             lexer=lang if lang != "text" else "text",
             theme=DarkCodeStyle,
             line_numbers=not is_short,
             background_color="#0d1117"
         )
-        
-        header = f"```" + lang if lang != "text" else "```"
+
+        header = "```" + lang if lang != "text" else "```"
         if filename:
             header = f"{filename} · " + header
-        
+
         self.console.print(Panel(
             syntax,
             title=f"[dim]{header}[/dim]",
@@ -960,7 +963,7 @@ class T100AIEngine:
             height=min(20, len(lines) + 2) if not is_short else None,
             style="on #0d1117"
         ))
-    
+
     def _extract_filename_from_context(self, code: str, lang: str) -> str:
         """Intenta extraer nombre de archivo del código"""
         patterns = {
@@ -969,17 +972,17 @@ class T100AIEngine:
             "bash": [r"#\s*script:\s*(\S+\.sh)", r"#!/bin/(?:bash|sh)\s*#\s*(\S+)"],
             "powershell": [r"#\s*script:\s*(\S+\.ps1)"],
         }
-        
+
         for pattern in patterns.get(lang, []):
             import re
             match = re.search(pattern, code, re.IGNORECASE)
             if match:
                 return match.group(1)
         return ""
-    
+
     def _save_generated_code(self, code: str, lang: str, custom_name: str = "") -> str:
         """Guarda código generado en archivos ordenados
-        
+
         Estructura de directorios:
         generated/
         ├── scripts/
@@ -988,28 +991,28 @@ class T100AIEngine:
         ├── analysis/
         └── reports/
         """
-        from pathlib import Path
         import uuid
-        
+        from pathlib import Path
+
         category = self._categorize_code(code, lang)
         base_dir = Path(f"generated/{category}")
         base_dir.mkdir(parents=True, exist_ok=True)
-        
+
         ext = self._get_extension(lang)
         if custom_name:
             filename = custom_name if custom_name.endswith(ext) else custom_name + ext
         else:
             filename = f"script_{uuid.uuid4().hex[:8]}{ext}"
-        
+
         filepath = base_dir / filename
         filepath.write_text(code, encoding="utf-8")
-        
+
         return str(filepath)
-    
+
     def _categorize_code(self, code: str, lang: str) -> str:
         """Categoriza el código según su contenido"""
         code_lower = code.lower()
-        
+
         if any(x in code_lower for x in ["exploit", "payload", "shellcode", "msfvenom", "metasploit"]):
             return "exploits"
         elif any(x in code_lower for x in ["nmap", "scan", "recon", "enum"]):
@@ -1024,7 +1027,7 @@ class T100AIEngine:
             return "scripts"
         else:
             return "misc"
-    
+
     def _get_extension(self, lang: str) -> str:
         """Obtiene extensión según lenguaje"""
         extensions = {
@@ -1045,7 +1048,7 @@ class T100AIEngine:
             "text": ".txt",
         }
         return extensions.get(lang.lower(), ".txt")
-    
+
     def _handle_save_code(self, code: str, lang: str, name: str = "") -> str:
         """Maneja guardar código y retorna la ruta"""
         try:
@@ -1055,37 +1058,37 @@ class T100AIEngine:
         except Exception as e:
             self.console.print(f"[#FF3366]Error[/] al guardar: {e}")
             return ""
-    
+
     def _handle_save_command(self, filename: str = "") -> None:
         """Maneja el comando /save"""
         if not self._last_generated_code:
             self.console.print("[yellow]No hay código para guardar.[/]")
             self.console.print("[dim]Genera código primero y luego usa /save[/]")
             return
-        
+
         code = self._last_generated_code["code"]
         lang = self._last_generated_code["lang"]
-        
+
         self._handle_save_code(code, lang, filename)
-    
+
     def _show_history(self, query: str = "") -> None:
         """Muestra el historial de comandos"""
-        from t100ai.utils.history import CommandHistory
         from rich.table import Table
-        from rich.panel import Panel
-        
+
+        from t100ai.utils.history import CommandHistory
+
         history = CommandHistory()
-        
+
         if query:
             commands = history.search(query)
             if not commands:
                 self.console.print(f"[dim]No hay resultados para '{query}'[/]")
                 return
-            
+
             table = Table(title=f"Resultados de búsqueda: '{query}'", border_style="#00D4FF")
             table.add_column("#", style="#8B949E", width=4)
             table.add_column("Comando", style="#00FF88")
-            
+
             for i, cmd in enumerate(commands, 1):
                 table.add_row(str(i), cmd)
         else:
@@ -1093,19 +1096,19 @@ class T100AIEngine:
             if not commands:
                 self.console.print("[dim]No hay historial[/]")
                 return
-            
+
             table = Table(title="Historial de Comandos (últimos 20)", border_style="#00D4FF")
             table.add_column("#", style="#8B949E", width=4)
             table.add_column("Comando", style="#00FF88")
             table.add_column("Timestamp", style="#8B949E")
-            
+
             history_data = history._history[-20:]
             for i, (entry, cmd) in enumerate(zip(history_data, commands), 1):
                 ts = entry.get("timestamp", "")[:19].replace("T", " ") if isinstance(entry, dict) else ""
                 table.add_row(str(i), cmd, ts)
-        
+
         self.console.print(table)
-    
+
     def _show_skills(self) -> None:
         """Muestra skills disponibles"""
         from rich.table import Table
@@ -1127,42 +1130,42 @@ class T100AIEngine:
             active = "[#00FF88]" if self.session.current_skill == skill_id else "[#8B949E]"
             table.add_row(skill_id, desc, f"{active}{status}[/]")
         self.console.print(table)
-        
+
     def _show_tools(self) -> None:
         """Muestra herramientas disponibles con categorías avanzadas"""
-        from rich.table import Table
         from rich.panel import Panel
-        
+        from rich.table import Table
+
         tools = None
         total_categories = 0
-        
+
         if self.advanced_tool_registry and self.advanced_tool_registry.tools:
             tools = list(self.advanced_tool_registry.tools.values())
             total_categories = len(set(t.category.split('/')[0] for t in tools))
         elif self.tool_registry:
             tools = self.tool_registry.list_tools()
             total_categories = len(set(t.category.split('/')[0] for t in tools))
-        
+
         if not tools:
             self.console.print("[yellow]No hay herramientas disponibles[/]")
             return
-        
+
         self.console.print(Panel.fit(
             "[#00D4FF]◈ Herramientas MCP Disponibles[/]\n"
             "[#8B949E]Total: {} herramientas en {} categorías[/]".format(
-                len(tools), 
+                len(tools),
                 total_categories
             ),
             border_style="#00D4FF"
         ))
-        
+
         categories = {}
         for tool in tools:
             cat = tool.category.split('/')[0]
             if cat not in categories:
                 categories[cat] = []
             categories[cat].append(tool)
-        
+
         for cat in sorted(categories.keys()):
             cat_tools = categories[cat]
             table = Table(title="[{}] {} herramientas".format("#FFD60A", cat.upper()), border_style="#00D4FF")
@@ -1170,7 +1173,7 @@ class T100AIEngine:
             table.add_column("Descripción", style="#8B949E")
             table.add_column("Riesgo", style="#E8E8E8")
             table.add_column("Modos", style="#00D4FF")
-            
+
             for tool in cat_tools[:15]:
                 risk_icons = {0: "[#00FF88]🟢", 1: "[#FFD60A]🟡", 2: "[#FF3366]🔴"}
                 risk = risk_icons.get(tool.risk_level, "[#8B949E]?")
@@ -1181,10 +1184,10 @@ class T100AIEngine:
                     risk,
                     "[#00D4FF]{}".format(modes)
                 )
-            
+
             self.console.print(table)
             self.console.print()
-    
+
     def _show_help(self) -> None:
         """Muestra ayuda de comandos"""
         help_text = """
@@ -1252,10 +1255,12 @@ class T100AIEngine:
 
     def _show_wordlists(self, action: str, arg: str) -> None:
         """Muestra wordlists y diccionarios disponibles"""
+        from rich.table import Table
+
         from t100ai.wordlists.dictionaries import AttackDictionary
-        
+
         attack_dict = AttackDictionary()
-        
+
         if action == "dir":
             items = attack_dict.get_directories()
             title = "Directorios Comunes"
@@ -1298,7 +1303,7 @@ class T100AIEngine:
             table.add_row("/wordlist all", "Todas las wordlists")
             self.console.print(table)
             return
-        
+
         self.console.print(f"[bold]◈ {title}[/bold]")
         for item in items[:30]:
             self.console.print(f"  [dim]{item}[/]")
@@ -1308,8 +1313,7 @@ class T100AIEngine:
     async def _handle_agent_command(self, action: str, arg: str) -> None:
         """Maneja comandos de agentes"""
         from rich.table import Table
-        from rich.progress import Progress, SpinnerColumn, TextColumn
-        
+
         if action == "list":
             agents = self.agent_orchestrator.list_agents() if self.agent_orchestrator else []
             table = Table(title="Agentes Disponibles")
@@ -1323,18 +1327,18 @@ class T100AIEngine:
             if not self.agent_orchestrator:
                 self.console.print("[yellow]Orquestador no inicializado. Usa /help[/]")
                 return
-            self.console.print(f"[#444444]◈ Worker:[/] [#666666]specter-mini 1[/]")
+            self.console.print("[#444444]◈ Worker:[/] [#666666]specter-mini 1[/]")
             self.console.print(f"[#444444]  Desplegando tarea:[/] [#00D4FF]{arg}[/]")
-            
+
             task_id = await self.agent_orchestrator.deploy_task(arg, {})
-            
+
             self.console.print(f"[#444444]  Tarea ID:[/] [#00FF88]{task_id}[/]")
             self.console.print(f"[#00FF88][OK][/] Tarea desplegada: {arg}")
-            
+
             await self._show_agent_progress(task_id)
         elif action == "status":
             status = self.agent_orchestrator.get_status() if self.agent_orchestrator else {}
-            self.console.print(f"[bold]◈ Estado del Orquestador[/bold]")
+            self.console.print("[bold]◈ Estado del Orquestador[/bold]")
             self.console.print(f"  Agentes: {status.get('active_agents', 0)}")
             self.console.print(f"  Tareas: {status.get('pending_tasks', 0)}")
         else:
@@ -1342,12 +1346,12 @@ class T100AIEngine:
 
     async def _show_agent_progress(self, task_id: str) -> None:
         """Muestra el progreso del agente en tiempo real"""
-        from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
-        
+        from rich.progress import TimeElapsedColumn
+
         if not self.agent_orchestrator:
             return
         status = self.agent_orchestrator.get_task_status(task_id)
-        
+
         with Progress(
             SpinnerColumn(spinner_name="dots2", style="#00FF88"),
             TextColumn(f"[#666666]Ejecutando:[/] [#00D4FF]{status.get('description', task_id)}[/]"),
@@ -1356,30 +1360,31 @@ class T100AIEngine:
             transient=True,
         ) as progress:
             task = progress.add_task("working", total=None)
-            
+
             while status.get("status") not in ["done", "error", "cancelled"]:
                 await asyncio.sleep(0.5)
                 status = self.agent_orchestrator.get_task_status(task_id) if self.agent_orchestrator else {}
                 progress.update(task, description=f"[#666666]{status.get('status', 'working')}[/]")
-        
+
         if status.get("result"):
-            self.console.print(f"[#00FF88]✓ Resultado:[/]")
+            self.console.print("[#00FF88]✓ Resultado:[/]")
             self.console.print(f"  [#8B949E]{status.get('result')}[/]")
 
     def _handle_read_command(self, filepath: str) -> None:
         """Lee un archivo y lo muestra"""
         from pathlib import Path
+
         from rich.syntax import Syntax
-        
+
         if not filepath:
             self.console.print("[yellow]Uso: /read <ruta_archivo>[/]")
             return
-        
+
         path = Path(filepath)
         if not path.exists():
             self.console.print(f"[red]Archivo no encontrado: {filepath}[/]")
             return
-        
+
         try:
             content = path.read_text(encoding="utf-8", errors="ignore")
             lang = "python" if filepath.endswith(".py") else "text"
@@ -1405,8 +1410,9 @@ class T100AIEngine:
 
     async def _list_models(self) -> None:
         """Lista los modelos disponibles en Ollama (y LM Studio si está activo)."""
-        import urllib.request
         import json
+        import urllib.request
+
         from rich.table import Table
 
         table = Table(title="Modelos Disponibles")
@@ -1451,7 +1457,7 @@ class T100AIEngine:
         else:
             self.console.print(table)
             self.console.print(
-                f"[dim]Usa [bold]/model switch <nombre>[/] para cambiar el modelo activo.[/]"
+                "[dim]Usa [bold]/model switch <nombre>[/] para cambiar el modelo activo.[/]"
             )
 
     async def _switch_model(self, model_name: str) -> None:
@@ -1513,7 +1519,7 @@ class T100AIEngine:
             for entry in self.session.scope:
                 table.add_row(entry.target, entry.type, entry.notes or "")
         self.console.print(table)
-    
+
     def _handle_scope_command(self, args: str) -> None:
         """Maneja comandos de scope"""
         if args.startswith("set "):
@@ -1526,54 +1532,54 @@ class T100AIEngine:
         else:
             self.session.add_to_scope(args)
             self.console.print(f"[#00FF88][OK][/] Aniadido al scope: {args}")
-    
+
     def _auto_detect_scope(self, user_input: str) -> list[str]:
         """Detecta automáticamente objetivos (IPs, dominios, URLs) en el input del usuario.
-        
+
         Returns:
             list: Lista de objetivos detectados
         """
         import re
-        
+
         targets = []
-        
+
         ip_pattern = r'\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b'
         domain_pattern = r'\b(?:[a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+(?:com|net|org|io|dev|app|co|us|uk|eu|de|fr|es|it|ru|cn|jp|br|in|au|nl|pl|se|no|dk|fi|at|be|ch|ie|info|biz|xyz|top|site|live|cloud|tech|ai|app|me|tv|cc|tv|pro|online|store)\b'
         url_pattern = r'https?://[^\s<>"{}|\\^`\[\]]+'
         cidr_pattern = r'\b(?:(?:[0-9]{1,3}\.){3}[0-9]{1,3})/(?:[0-9]|[1-2][0-9]|3[0-2])\b'
-        
+
         found_ips = re.findall(ip_pattern, user_input)
         found_cidrs = re.findall(cidr_pattern, user_input)
         found_domains = re.findall(domain_pattern, user_input)
         found_urls = re.findall(url_pattern, user_input)
-        
+
         targets.extend(found_cidrs)
-        
+
         for ip in found_ips:
             if not any(ip in cidr for cidr in targets):
                 targets.append(ip)
-        
+
         for url in found_urls:
             url_clean = url.rstrip('/')
             if '://' in url_clean:
                 domain = url_clean.split('://')[1].split('/')[0]
                 if domain not in targets and not any(domain in t for t in targets):
                     targets.append(domain)
-        
+
         for domain in found_domains:
             if domain not in targets and not any(domain in t for t in targets):
                 targets.append(domain)
-        
+
         return list(dict.fromkeys(targets))
-    
+
     def _detect_target_type(self, target: str) -> str:
         """Detecta el tipo de objetivo"""
         import re
-        
+
         ip_pattern = r'^((?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?))(?:/\d+)?$'
         url_pattern = r'^https?://'
         cidr_pattern = r'/\d+$'
-        
+
         if re.match(ip_pattern, target):
             if re.search(cidr_pattern, target):
                 return "network"
@@ -1584,7 +1590,7 @@ class T100AIEngine:
             return "domain"
         else:
             return "unknown"
-    
+
     async def _set_role(self, role_args: str) -> None:
         """Establece el rol del operador y muestra feedback inmediato."""
         from t100ai.core.session import Role
@@ -1636,14 +1642,14 @@ Si hay scope definido, también se inyectará en cada consulta.[/]""",
             marker = "[bold #00FF88]► [/]" if r == active else "  "
             table.add_row(f"{marker}{r}", d)
         self.console.print(table)
-    
+
     def _show_role(self) -> None:
         """Muestra el rol actual"""
         if self.session.role:
             self.console.print(f"Rol activo: [#00FF88]{self.session.role.value}[/]")
         else:
             self.console.print("[yellow]No hay rol activo[/]")
-    
+
     # ── Gestión de Hallazgos ────────────────────────────────────────────
 
     def _add_finding(self, description: str) -> None:
@@ -1699,8 +1705,9 @@ Si hay scope definido, también se inyectará en cada consulta.[/]""",
 
     async def _generate_report(self, preview: bool = False) -> None:
         """Genera un informe Markdown de la sesión actual."""
-        from pathlib import Path
         from datetime import datetime
+        from pathlib import Path
+
         from rich.markdown import Markdown
 
         session = self.session
@@ -1709,42 +1716,40 @@ Si hay scope definido, también se inyectará en cada consulta.[/]""",
         scope_targets = ", ".join(e.target for e in session.scope) or "Sin scope definido"
         role = session.role.value if session.role else "Ninguno"
 
-        sev_colors = {"CRIT": "#FF3366", "HIGH": "#FF6B35", "MED": "#FFD60A",
-                      "LOW": "#00FF88", "INFO": "#8B949E"}
-
+        # Severidades renderizadas por el propio generator de reporte
         # ── Construir contenido Markdown ───────────────────────────────
         lines = [
-            f"# T-100AI — Informe de Sesión",
-            f"",
+            "# T-100AI — Informe de Sesión",
+            "",
             f"**Fecha:** {now}  ",
             f"**Sesión ID:** `{session.id}`  ",
             f"**Nombre:** {session.name}  ",
             f"**Duración:** {session.duration}  ",
             f"**Rol:** {role}  ",
-            f"",
-            f"---",
-            f"",
-            f"## Scope de la Operación",
-            f"",
+            "",
+            "---",
+            "",
+            "## Scope de la Operación",
+            "",
             f"{scope_targets}",
-            f"",
-            f"---",
-            f"",
-            f"## Resumen Ejecutivo",
-            f"",
-            f"| Severidad | Hallazgos |",
-            f"|---|---|",
+            "",
+            "---",
+            "",
+            "## Resumen Ejecutivo",
+            "",
+            "| Severidad | Hallazgos |",
+            "|---|---|",
             f"| 🚨 CRÍTICA | {counts['CRIT']} |",
             f"| 🔴 ALTA | {counts['HIGH']} |",
             f"| 🟡 MEDIA | {counts['MED']} |",
             f"| 🟢 BAJA | {counts['LOW']} |",
             f"| ℹ️ INFO | {counts['INFO']} |",
             f"| **TOTAL** | **{len(session.findings)}** |",
-            f"",
-            f"---",
-            f"",
-            f"## Hallazgos Detallados",
-            f"",
+            "",
+            "---",
+            "",
+            "## Hallazgos Detallados",
+            "",
         ]
 
         if not session.findings:
@@ -1753,30 +1758,30 @@ Si hay scope definido, también se inyectará en cada consulta.[/]""",
             for i, f in enumerate(session.findings, 1):
                 lines += [
                     f"### {i}. [{f.severity}] {f.title}",
-                    f"",
+                    "",
                     f"- **ID:** `{f.id}`",
                     f"- **Severidad:** {f.severity}",
                     f"- **CVSS:** {f.cvss if f.cvss is not None else 'N/A'}",
                     f"- **Herramienta:** {f.tool or 'manual'}",
                     f"- **Objetivo:** {f.target or scope_targets}",
                     f"- **Timestamp:** {f.timestamp.strftime('%Y-%m-%d %H:%M:%S')}",
-                    f"",
+                    "",
                 ]
                 if f.description:
-                    lines += [f"**Descripción:**", f"", f.description, f""]
+                    lines += ["**Descripción:**", "", f.description, ""]
                 if f.evidence:
-                    lines += [f"**Evidencia:**", f""]
+                    lines += ["**Evidencia:**", ""]
                     for ev in f.evidence:
                         lines.append(f"- {ev}")
-                    lines.append(f"")
+                    lines.append("")
 
         lines += [
-            f"---",
-            f"",
-            f"## Log de Acciones",
-            f"",
-            f"| Timestamp | Acción | Datos |",
-            f"|---|---|---|",
+            "---",
+            "",
+            "## Log de Acciones",
+            "",
+            "| Timestamp | Acción | Datos |",
+            "|---|---|---|",
         ]
         for entry in session.log[-20:]:
             ts = entry['timestamp'][:19].replace('T', ' ')
@@ -1785,10 +1790,10 @@ Si hay scope definido, también se inyectará en cada consulta.[/]""",
             lines.append(f"| {ts} | {action} | {data} |")
 
         lines += [
-            f"",
-            f"---",
-            f"",
-            f"*Generado automáticamente por T-100AI v2.0*",
+            "",
+            "---",
+            "",
+            "*Generado automáticamente por T-100AI v2.0*",
         ]
 
         report_md = "\n".join(lines)
@@ -1846,8 +1851,8 @@ Si hay scope definido, también se inyectará en cada consulta.[/]""",
         self.console.print(table)
 
     def _export_log(self) -> None:
-        from pathlib import Path
         import json
+        from pathlib import Path
         log_dir = Path("sessions") / self.session.id
         log_dir.mkdir(parents=True, exist_ok=True)
         log_path = log_dir / "session_log.json"
@@ -1867,16 +1872,16 @@ Si hay scope definido, también se inyectará en cada consulta.[/]""",
         counts = self.session.findings_count
         self.console.print(Panel.fit(
             f"""[b]Información de Sesión[/b]
-            
+
 ID: [#00D4FF]{self.session.id}[/]
 Nombre: [#00FF88]{self.session.name}[/]
 Duración: [#00FF88]{self.session.duration}[/]
 Rol: [#FFD60A]{self.session.role.value if self.session.role else "Ninguno"}[/]
- 
+
 [b]Hallazgos[/b]
-[ #FF3366]CRIT: {counts['CRIT']}[/]  [#FF6B35]HIGH: {counts['HIGH']}[/]  
+[ #FF3366]CRIT: {counts['CRIT']}[/]  [#FF6B35]HIGH: {counts['HIGH']}[/]
 [ #FFD60A]MED: {counts['MED']}[/]  [#00FF88]LOW: {counts['LOW']}[/]  [#8B949E]INFO: {counts['INFO']}[/]
- 
+
 [b]Scope[/b]
 Objetivos: [#00D4FF]{len(self.session.scope)}[/]""",
             border_style="#00FF88"
@@ -1942,7 +1947,7 @@ Objetivos: [#00D4FF]{len(self.session.scope)}[/]""",
         """Show deploy status."""
         if self.agent_orchestrator:
             status = self.agent_orchestrator.get_status()
-            self.console.print(f"[bold]Estado de despliegue[/]")
+            self.console.print("[bold]Estado de despliegue[/]")
             self.console.print(f"  Agentes activos: {status.get('active_agents', 0)}")
             self.console.print(f"  Tareas pendientes: {status.get('pending_tasks', 0)}")
         else:
@@ -1984,8 +1989,9 @@ Objetivos: [#00D4FF]{len(self.session.scope)}[/]""",
     def _show_workflow_list(self) -> None:
         """List available workflows."""
         try:
-            from t100ai.workflows.definitions import BUILTIN_WORKFLOWS
             from rich.table import Table
+
+            from t100ai.workflows.definitions import BUILTIN_WORKFLOWS
             table = Table(title="Workflows Disponibles")
             table.add_column("Nombre", style="#00D4FF")
             table.add_column("Descripcion", style="#8B949E")

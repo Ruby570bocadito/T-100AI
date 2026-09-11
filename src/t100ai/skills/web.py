@@ -7,7 +7,7 @@ from typing import Any
 
 import structlog
 
-from t100ai.skills.base import BaseSkill, SkillResult, RiskLevel
+from t100ai.skills.base import BaseSkill, RiskLevel, SkillResult
 
 logger = structlog.get_logger()
 
@@ -124,7 +124,7 @@ class WebSkill(BaseSkill):
 
         findings = []
         if rc == 0:
-            count = len([l for l in output.splitlines() if l.strip()])
+            count = len([ln for ln in output.splitlines() if ln.strip()])
             findings.append({"type": "dir_fuzz", "paths_found": count, "target": target})
 
         return SkillResult(success=rc == 0, output=output, findings=findings, execution_time=time.time() - start)

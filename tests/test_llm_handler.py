@@ -1,5 +1,4 @@
 """Tests for LLM Handler with offline fallback."""
-import pytest
 
 from t100ai.llm.handler import LLMHandler
 

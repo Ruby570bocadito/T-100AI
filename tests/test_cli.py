@@ -1,6 +1,5 @@
 """Tests for CLI main module."""
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 
 class TestCLIImports:

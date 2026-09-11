@@ -3,10 +3,10 @@
 import json
 import socket
 import time
-import uuid
-import urllib.request
 import urllib.error
-from typing import Optional, Generator
+import urllib.request
+import uuid
+from typing import Generator, Optional
 
 from t100ai.core.config import T100AIConfig
 from t100ai.llm.prompt_builder import PromptBuilder
@@ -201,7 +201,7 @@ class OllamaClient:
                     return json.loads(resp.read().decode("utf-8"))
         except Exception:
             pass
-        
+
         # Fallback: return basic info
         return {"model": self.model, "host": self.host}
 
@@ -220,7 +220,7 @@ class OllamaClient:
                         return data
         except Exception:
             pass
-        
+
         # Try OpenAI compatible endpoint
         url = f"{self.host}/v1/models"
         try:

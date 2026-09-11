@@ -1,6 +1,5 @@
-import pytest
 
-from t100ai.core.session import Session, Finding, ScopeEntry, Role
+from t100ai.core.session import Finding, Role, Session
 
 
 def test_session_creation():
@@ -36,7 +35,6 @@ def test_findings_count():
 
 
 def test_duration_calculation():
-    import time
     s = Session("test_session_duration")
     start = s.created_at
     assert isinstance(start, object)
@@ -83,9 +81,9 @@ def test_session_backup_restore(tmp_path):
     s = Session(name="test_backup")
     s.add_finding(Finding(title="Test", severity="MED"))
     s.add_to_scope("10.0.0.1", "ip")
-    
+
     backup_path = s.export_full_backup(str(tmp_path))
-    
+
     restored = Session.restore_from_backup(str(backup_path))
     assert restored.name == "test_backup"
     assert len(restored.findings) == 1

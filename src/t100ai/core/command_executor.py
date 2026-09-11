@@ -7,7 +7,6 @@ import platform
 import re
 import subprocess
 import uuid
-from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -20,10 +19,10 @@ from rich.prompt import Confirm, Prompt
 from rich.syntax import Syntax
 from rich.table import Table
 
-from t100ai.core.session import Session, Finding
 from t100ai.core.config import T100AIConfig
-from t100ai.core.sandbox import CommandSandbox
 from t100ai.core.llm_handler import LLMHandler
+from t100ai.core.sandbox import CommandSandbox
+from t100ai.core.session import Finding, Session
 
 logger = structlog.get_logger()
 
@@ -359,7 +358,7 @@ class CommandExecutor:
                 continue
 
             self.console.print()
-            self.console.print(f"[bold #00FF88]▶ Ejecutando...[/]")
+            self.console.print("[bold #00FF88]▶ Ejecutando...[/]")
 
             output, error, returncode = await self._run_shell_command(cmd)
 
@@ -595,7 +594,7 @@ class CommandExecutor:
             self.console.print(table)
         elif action == "spawn" and arg:
             self.console.print(
-                f"[#444444]◈ Worker:[/] [#666666]specter-mini 1[/]"
+                "[#444444]◈ Worker:[/] [#666666]specter-mini 1[/]"
             )
             self.console.print(
                 f"[#444444]  Desplegando tarea:[/] [#00D4FF]{arg}[/]"
@@ -615,7 +614,7 @@ class CommandExecutor:
                 if self._agent_orchestrator
                 else {}
             )
-            self.console.print(f"[bold]◈ Estado del Orquestador[/bold]")
+            self.console.print("[bold]◈ Estado del Orquestador[/bold]")
             self.console.print(
                 f"  Agentes: {status.get('active_agents', 0)}"
             )
@@ -657,7 +656,7 @@ class CommandExecutor:
                 )
 
         if status.get("result"):
-            self.console.print(f"[#00FF88]✓ Resultado:[/]")
+            self.console.print("[#00FF88]✓ Resultado:[/]")
             self.console.print(f"  [#8B949E]{status.get('result')}[/]")
 
     def _save_generated_code(
@@ -821,16 +820,16 @@ class CommandExecutor:
         self.console.print(
             Panel.fit(
                 f"""[b]Información de Sesión[/b]
-            
+
 ID: [#00D4FF]{self.session.id}[/]
 Nombre: [#00FF88]{self.session.name}[/]
 Duración: [#00FF88]{self.session.duration}[/]
 Rol: [#FFD60A]{self.session.role.value if self.session.role else "Ninguno"}[/]
- 
+
 [b]Hallazgos[/b]
-[ #FF3366]CRIT: {counts['CRIT']}[/]  [#FF6B35]HIGH: {counts['HIGH']}[/]  
+[ #FF3366]CRIT: {counts['CRIT']}[/]  [#FF6B35]HIGH: {counts['HIGH']}[/]
 [ #FFD60A]MED: {counts['MED']}[/]  [#00FF88]LOW: {counts['LOW']}[/]  [#8B949E]INFO: {counts['INFO']}[/]
- 
+
 [b]Scope[/b]
 Objetivos: [#00D4FF]{len(self.session.scope)}[/]""",
                 border_style="#00FF88",

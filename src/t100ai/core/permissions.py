@@ -5,13 +5,13 @@ import os
 import sys
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Optional, Any, Dict, Set
+from typing import Any, Dict, Optional, Set
 
+from rich import box
 from rich.console import Console
 from rich.panel import Panel
-from rich.table import Table
 from rich.prompt import Confirm
-from rich import box
+from rich.table import Table
 
 
 class PermissionLevel(Enum):

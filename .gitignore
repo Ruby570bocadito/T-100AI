@@ -41,7 +41,9 @@ htmlcov/
 .DS_Store
 Thumbs.db
 SPECTER_AI_Concept_v2.md
-docs/
 git_push.ps1
 *.egg-info/
-nano
+
+# T-100AI runtime
+reports/
+workflows/

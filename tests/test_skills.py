@@ -1,9 +1,8 @@
-import pytest
 
+from t100ai.skills.base import RiskLevel, SkillResult
 from t100ai.skills.recon import ReconSkill
-from t100ai.skills.web import WebSkill
 from t100ai.skills.report import ReportSkill
-from t100ai.skills.base import SkillResult, RiskLevel
+from t100ai.skills.web import WebSkill
 
 
 def test_recon_skill_creation():
@@ -68,8 +67,8 @@ def test_report_skill_export_csv():
 
 
 def test_recon_skill_validate_params():
-    skill = ReconSkill()
-    assert True  # validate_params is async and requires network tools
+    ReconSkill()  # debe instanciar sin error; validate_params es async y requiere red
+    assert True
 
 
 def test_skill_result_success():

@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import json
-import os
 import hashlib
 import hmac
+import json
+import os
 from datetime import datetime, timezone
-from typing import List, Dict, Any, Optional
-
+from typing import Any, Dict, List, Optional
 
 _MAX_LOG_SIZE = 50 * 1024 * 1024  # 50MB rotation threshold
 

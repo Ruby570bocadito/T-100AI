@@ -1,15 +1,13 @@
 """AD - Active Directory Attack & Enumeration Skill."""
 
 import asyncio
-import json
 import shutil
-import subprocess
 import time
 from typing import Any
 
 import structlog
 
-from t100ai.skills.base import BaseSkill, SkillResult, RiskLevel
+from t100ai.skills.base import BaseSkill, RiskLevel, SkillResult
 
 logger = structlog.get_logger()
 

@@ -5,16 +5,15 @@ from __future__ import annotations
 import asyncio
 import threading
 import time
-from typing import TYPE_CHECKING, Optional, Callable
+from typing import TYPE_CHECKING, Callable, Optional
 
 from rich.console import Console
-from rich.panel import Panel
-from rich.markdown import Markdown
 from rich.markup import escape as markup_escape
+from rich.panel import Panel
 
 if TYPE_CHECKING:
-    from t100ai.core.session import Session
     from t100ai.core.config import T100AIConfig
+    from t100ai.core.session import Session
 
 logger = __import__("structlog").get_logger()
 
@@ -97,7 +96,7 @@ class LLMHandler:
 
     async def generate_response(self, user_input: str, system_prompt: str, label: str = "Pensando") -> Optional[str]:
         """Full LLM query with connection management."""
-        from t100ai.llm.connection_manager import OllamaConnectionManager, OllamaConnectionError
+        from t100ai.llm.connection_manager import OllamaConnectionError, OllamaConnectionManager
 
         cm = OllamaConnectionManager.get_instance()
         cm.update_config(self.config.ollama_host, self.config.ollama_model)
@@ -133,8 +132,8 @@ class LLMHandler:
 
     def save_generated_code(self, code: str, lang: str, filename: str = "") -> str:
         """Guarda codigo generado en disco."""
-        from pathlib import Path
         import uuid
+        from pathlib import Path
 
         category = self._categorize_code(code, lang)
         base_dir = Path("generated") / category

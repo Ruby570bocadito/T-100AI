@@ -1,5 +1,4 @@
 """Tests for REST API and engagement management."""
-import pytest
 
 from t100ai.api.server import T100AIAPI, APIResponse
 
@@ -51,8 +50,8 @@ class TestT100AIAPI:
     def test_default_status_endpoint(self):
         api = T100AIAPI(host="127.0.0.1", port=18081)
         api.start()
-        import urllib.request
         import json
+        import urllib.request
         try:
             with urllib.request.urlopen(f"{api.base_url}/api/status", timeout=5) as resp:
                 data = json.loads(resp.read())
@@ -63,10 +62,10 @@ class TestT100AIAPI:
     def test_default_404_endpoint(self):
         api = T100AIAPI(host="127.0.0.1", port=18082)
         api.start()
-        import urllib.request
         import urllib.error
+        import urllib.request
         try:
-            with urllib.request.urlopen(f"{api.base_url}/api/nonexistent", timeout=5) as resp:
+            with urllib.request.urlopen(f"{api.base_url}/api/nonexistent", timeout=5):
                 pass
         except urllib.error.HTTPError as e:
             assert e.code == 404
@@ -77,8 +76,8 @@ class TestT100AIAPI:
         api = T100AIAPI(host="127.0.0.1", port=18083)
         api.register_handler("GET", "/api/health", lambda q: APIResponse(200, {"healthy": True}))
         api.start()
-        import urllib.request
         import json
+        import urllib.request
         try:
             with urllib.request.urlopen(f"{api.base_url}/api/health", timeout=5) as resp:
                 data = json.loads(resp.read())

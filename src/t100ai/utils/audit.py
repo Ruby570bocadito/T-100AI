@@ -1,7 +1,7 @@
+import hashlib
 import json
 import logging
 import os
-import hashlib
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from shutil import copyfile

@@ -1,8 +1,8 @@
 """Actionable error system for T-100AI"""
 
-from typing import Optional, Callable
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Callable, Optional
 
 
 class ErrorSeverity(Enum):
@@ -29,29 +29,29 @@ class T100AIError(Exception):
     severity: ErrorSeverity = ErrorSeverity.ERROR
     suggestions: list[ErrorSuggestion] = field(default_factory=list)
     context: dict = field(default_factory=dict)
-    
+
     def format(self) -> str:
         lines = [
             f"[bold #FF3366]Error:[/] {self.message}",
             f"[dim]Código:[/] {self.code}"
         ]
-        
+
         if self.suggestions:
             lines.append("\n[bold #FFD60A]Sugerencias:[/]")
             for i, s in enumerate(self.suggestions, 1):
                 lines.append(f"  {i}. {s.action}")
                 if s.command:
                     lines.append(f"     [dim]$[/] {s.command}")
-        
+
         return "\n".join(lines)
 
 
 class CommandError(T100AIError):
     """Error en la ejecución de comandos"""
-    
+
     def __init__(
-        self, 
-        message: str, 
+        self,
+        message: str,
         command: str = "",
         exit_code: int = -1,
         stderr: str = ""
@@ -68,7 +68,7 @@ class CommandError(T100AIError):
                 action="Aumenta el timeout o verifica conectividad",
                 command="/mode expert"
             ))
-        
+
         super().__init__(
             message=f"Comando falló: {message}",
             code="CMD_ERROR",
@@ -79,7 +79,7 @@ class CommandError(T100AIError):
 
 class PermissionError(T100AIError):
     """Error de permisos"""
-    
+
     def __init__(self, message: str, action: str = "", required_level: str = ""):
         suggestions = [
             ErrorSuggestion(
@@ -92,7 +92,7 @@ class PermissionError(T100AIError):
                 action=f"Eleva permisos para: {required_level}",
                 command=f"/permissions grant {action}" if action else "/permissions show"
             ))
-        
+
         super().__init__(
             message=message,
             code="PERMISSION_DENIED",
@@ -104,7 +104,7 @@ class PermissionError(T100AIError):
 
 class SkillError(T100AIError):
     """Error en la ejecución de skills"""
-    
+
     def __init__(self, skill_name: str, message: str, action: str = ""):
         suggestions = [
             ErrorSuggestion(
@@ -116,7 +116,7 @@ class SkillError(T100AIError):
                 docs_url=f"docs/habilidades/{skill_name}.md"
             )
         ]
-        
+
         super().__init__(
             message=f"Skill '{skill_name}' falló: {message}",
             code="SKILL_ERROR",
@@ -127,7 +127,7 @@ class SkillError(T100AIError):
 
 class ConfigError(T100AIError):
     """Error de configuración"""
-    
+
     def __init__(self, message: str, config_key: str = ""):
         suggestions = [
             ErrorSuggestion(
@@ -144,7 +144,7 @@ class ConfigError(T100AIError):
                 action=f"Configura '{config_key}'",
                 docs_url="docs/configuracion.md"
             ))
-        
+
         super().__init__(
             message=message,
             code="CONFIG_ERROR",
@@ -156,7 +156,7 @@ class ConfigError(T100AIError):
 
 class LLMError(T100AIError):
     """Error en la conexión con LLM"""
-    
+
     def __init__(self, message: str, model: str = "", host: str = ""):
         suggestions = [
             ErrorSuggestion(
@@ -172,7 +172,7 @@ class LLMError(T100AIError):
                 command="specter --no-llm"
             )
         ]
-        
+
         super().__init__(
             message=message,
             code="LLM_ERROR",
@@ -183,7 +183,7 @@ class LLMError(T100AIError):
 
 class WorkflowError(T100AIError):
     """Error en workflows"""
-    
+
     def __init__(self, workflow_name: str, message: str, step: int = 0):
         suggestions = [
             ErrorSuggestion(
@@ -195,7 +195,7 @@ class WorkflowError(T100AIError):
                 docs_url="docs/workflows.md"
             )
         ]
-        
+
         super().__init__(
             message=f"Workflow '{workflow_name}' falló: {message}",
             code="WORKFLOW_ERROR",
@@ -208,31 +208,31 @@ def format_error(error: Exception) -> str:
     """Formatea cualquier error para mostrar al usuario"""
     if isinstance(error, T100AIError):
         return error.format()
-    
+
     return f"[bold #FF3366]Error inesperado:[/] {str(error)}\n[dim]Usa /help para comandos disponibles[/]"
 
 
 class ErrorHandler:
     """Manejador centralizado de errores"""
-    
+
     _handlers: dict[type, Callable] = {}
-    
+
     @classmethod
     def register(cls, error_type: type, handler: Callable[[Exception], str]):
         cls._handlers[error_type] = handler
-    
+
     @classmethod
     def handle(cls, error: Exception) -> str:
         error_type = type(error)
         if error_type in cls._handlers:
             return cls._handlers[error_type](error)
-        
+
         for registered_type, handler in cls._handlers.items():
             if isinstance(error, registered_type):
                 return handler(error)
-        
+
         return format_error(error)
-    
+
     @classmethod
     def register_defaults(cls):
         cls.register(CommandError, lambda e: e.format())

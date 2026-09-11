@@ -5,6 +5,7 @@ Each template defines: role, scope, skills to load, workflows to run,
 and permission mode.
 """
 from __future__ import annotations
+
 from dataclasses import dataclass, field
 from typing import Any, Optional
 

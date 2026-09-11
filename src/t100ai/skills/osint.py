@@ -9,7 +9,7 @@ from typing import Any
 
 import structlog
 
-from t100ai.skills.base import BaseSkill, SkillResult, RiskLevel
+from t100ai.skills.base import BaseSkill, RiskLevel, SkillResult
 
 logger = structlog.get_logger()
 
@@ -124,8 +124,8 @@ class OsintSkill(BaseSkill):
     async def _http_get(self, url: str, headers: dict | None = None, timeout: int = 30) -> str:
         """Realiza una petición HTTP GET de forma async con rate limiting."""
         await asyncio.sleep(OSINT_RATE_LIMIT)
-        import urllib.request
         import urllib.error
+        import urllib.request
 
         req = urllib.request.Request(url, headers=headers or {"User-Agent": "T-100AI-OSINT"})
         try:

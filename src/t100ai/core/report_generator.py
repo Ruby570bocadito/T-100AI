@@ -10,8 +10,8 @@ from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.table import Table
 
-from t100ai.core.session import Session
 from t100ai.core.config import T100AIConfig
+from t100ai.core.session import Session
 
 
 class ReportGenerator:
@@ -42,37 +42,37 @@ class ReportGenerator:
         role = session.role.value if session.role else "Ninguno"
 
         lines = [
-            f"# T-100AI — Informe de Sesión",
-            f"",
+            "# T-100AI — Informe de Sesión",
+            "",
             f"**Fecha:** {now}  ",
             f"**Sesión ID:** `{session.id}`  ",
             f"**Nombre:** {session.name}  ",
             f"**Duración:** {session.duration}  ",
             f"**Rol:** {role}  ",
-            f"",
-            f"---",
-            f"",
-            f"## Scope de la Operación",
-            f"",
+            "",
+            "---",
+            "",
+            "## Scope de la Operación",
+            "",
             f"{scope_targets}",
-            f"",
-            f"---",
-            f"",
-            f"## Resumen Ejecutivo",
-            f"",
-            f"| Severidad | Hallazgos |",
-            f"|---|---|",
+            "",
+            "---",
+            "",
+            "## Resumen Ejecutivo",
+            "",
+            "| Severidad | Hallazgos |",
+            "|---|---|",
             f"| 🚨 CRÍTICA | {counts['CRIT']} |",
             f"| 🔴 ALTA | {counts['HIGH']} |",
             f"| 🟡 MEDIA | {counts['MED']} |",
             f"| 🟢 BAJA | {counts['LOW']} |",
             f"| ℹ️ INFO | {counts['INFO']} |",
             f"| **TOTAL** | **{len(session.findings)}** |",
-            f"",
-            f"---",
-            f"",
-            f"## Hallazgos Detallados",
-            f"",
+            "",
+            "---",
+            "",
+            "## Hallazgos Detallados",
+            "",
         ]
 
         if not session.findings:
@@ -81,30 +81,30 @@ class ReportGenerator:
             for i, finding in enumerate(session.findings, 1):
                 lines += [
                     f"### {i}. [{finding.severity}] {finding.title}",
-                    f"",
+                    "",
                     f"- **ID:** `{finding.id}`",
                     f"- **Severidad:** {finding.severity}",
                     f"- **CVSS:** {finding.cvss if finding.cvss is not None else 'N/A'}",
                     f"- **Herramienta:** {finding.tool or 'manual'}",
                     f"- **Objetivo:** {finding.target or scope_targets}",
                     f"- **Timestamp:** {finding.timestamp.strftime('%Y-%m-%d %H:%M:%S')}",
-                    f"",
+                    "",
                 ]
                 if finding.description:
-                    lines += [f"**Descripción:**", f"", finding.description, f""]
+                    lines += ["**Descripción:**", "", finding.description, ""]
                 if finding.evidence:
-                    lines += [f"**Evidencia:**", f""]
+                    lines += ["**Evidencia:**", ""]
                     for ev in finding.evidence:
                         lines.append(f"- {ev}")
-                    lines.append(f"")
+                    lines.append("")
 
         lines += [
-            f"---",
-            f"",
-            f"## Log de Acciones",
-            f"",
-            f"| Timestamp | Acción | Datos |",
-            f"|---|---|---|",
+            "---",
+            "",
+            "## Log de Acciones",
+            "",
+            "| Timestamp | Acción | Datos |",
+            "|---|---|---|",
         ]
         for entry in session.log[-20:]:
             ts = entry['timestamp'][:19].replace('T', ' ')
@@ -113,10 +113,10 @@ class ReportGenerator:
             lines.append(f"| {ts} | {action} | {data} |")
 
         lines += [
-            f"",
-            f"---",
-            f"",
-            f"*Generado automáticamente por T-100AI v2.0*",
+            "",
+            "---",
+            "",
+            "*Generado automáticamente por T-100AI v2.0*",
         ]
 
         report_md = "\n".join(lines)
@@ -185,16 +185,16 @@ class ReportGenerator:
         counts = self.session.findings_count
         self.console.print(Panel.fit(
             f"""[b]Información de Sesión[/b]
-            
+
 ID: [#00D4FF]{self.session.id}[/]
 Nombre: [#00FF88]{self.session.name}[/]
 Duración: [#00FF88]{self.session.duration}[/]
 Rol: [#FFD60A]{self.session.role.value if self.session.role else "Ninguno"}[/]
- 
+
 [b]Hallazgos[/b]
-[ #FF3366]CRIT: {counts['CRIT']}[/]  [#FF6B35]HIGH: {counts['HIGH']}[/]  
+[ #FF3366]CRIT: {counts['CRIT']}[/]  [#FF6B35]HIGH: {counts['HIGH']}[/]
 [ #FFD60A]MED: {counts['MED']}[/]  [#00FF88]LOW: {counts['LOW']}[/]  [#8B949E]INFO: {counts['INFO']}[/]
- 
+
 [b]Scope[/b]
 Objetivos: [#00D4FF]{len(self.session.scope)}[/]""",
             border_style="#00FF88"

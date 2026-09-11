@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from t100ai.core.session_manager import SessionManager
-from t100ai.core.session import Session
-from t100ai.core.models import SessionData
-from datetime import datetime, timezone
 import uuid
+from datetime import datetime, timezone
 from typing import Optional
+
+from t100ai.core.models import SessionData
+from t100ai.core.session import Session
+from t100ai.core.session_manager import SessionManager
 
 
 def save_session(session: Optional[Session] = None) -> str:

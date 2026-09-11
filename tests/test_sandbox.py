@@ -1,10 +1,11 @@
 """Tests para CommandSandbox - modelo allow-all con blacklist"""
 
-import pytest
-import time
 import json
-from t100ai.core.sandbox import CommandSandbox, SandboxResult
+import time
 
+import pytest
+
+from t100ai.core.sandbox import CommandSandbox
 
 # ── Fixtures ─────────────────────────────────────────────────────────────
 

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import os
 import shutil
 import time
 from dataclasses import dataclass, field
@@ -11,8 +10,8 @@ from typing import Any, Optional
 
 import structlog
 
-from t100ai.mcp.tool import MCPTool, ToolResult
 from t100ai.mcp.registry import ToolRegistry
+from t100ai.mcp.tool import MCPTool
 from t100ai.wordlists.dictionaries import AttackDictionary
 
 logger = structlog.get_logger()

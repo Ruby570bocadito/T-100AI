@@ -1,8 +1,7 @@
 """Tests for PostEx skill."""
-import pytest
 
+from t100ai.skills.base import RiskLevel
 from t100ai.skills.postex import PostExSkill
-from t100ai.skills.base import SkillResult, RiskLevel
 
 
 def test_postex_skill_creation():
@@ -62,7 +61,7 @@ Sudo version 1.9.5p2
 
 def test_postex_skill_parse_postex_lateral_success():
     skill = PostExSkill()
-    output = """
+    output = r"""
 whoami
 nt authority\system
 hostname

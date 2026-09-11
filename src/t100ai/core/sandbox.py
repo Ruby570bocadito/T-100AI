@@ -5,13 +5,13 @@ Solo bloquea comandos que destruyen sistemas o causan daño irreversible.
 Todo lo demás está permitido.
 """
 
+import json
 import os
 import re
 import shlex
 import signal
 import subprocess
 import time
-import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -310,35 +310,64 @@ class CommandSandbox:
         """Ejecuta con timeout y process group kill.
 
         Usa shlex.split para evitar shell injection cuando sea posible.
-        Falls back to shell=True para comandos con pipes/redirections.
+        Falls back to /bin/sh -c para comandos con pipes/redirections.
+        En POSIX el proceso corre en su propio session/process-group
+        (start_new_session) para poder matar todo el árbol en timeout.
         """
         try:
             if os.name == 'posix':
                 has_shell_meta = bool(re.search(r'[|&;<>$`()]', command))
                 if has_shell_meta:
-                    result = subprocess.run(
-                        ["/bin/sh", "-c", command], timeout=self.timeout,
-                        capture_output=True, text=True, preexec_fn=os.setsid,
-                    )
+                    args = ["/bin/sh", "-c", command]
                 else:
                     try:
                         args = shlex.split(command)
                     except ValueError:
                         args = ["/bin/sh", "-c", command]
-                    result = subprocess.run(
-                        args, timeout=self.timeout,
-                        capture_output=True, text=True, preexec_fn=os.setsid,
-                    )
-            else:
-                result = subprocess.run(
-                    command, shell=True, timeout=self.timeout,
-                    capture_output=True, text=True,
+                    if not args:
+                        args = ["/bin/sh", "-c", command]
+                proc = subprocess.Popen(
+                    args,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    errors="replace",
+                    start_new_session=True,
                 )
-            output = result.stdout[:self.max_output_size]
-            error = result.stderr[:self.max_output_size]
-            if len(result.stdout) > self.max_output_size:
+                try:
+                    stdout, stderr = proc.communicate(timeout=self.timeout)
+                    timed_out = False
+                except subprocess.TimeoutExpired:
+                    self._kill_process_tree(proc)
+                    stdout, stderr = proc.communicate()
+                    timed_out = True
+            else:
+                proc = subprocess.Popen(
+                    command, shell=True,
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                    text=True, errors="replace",
+                )
+                try:
+                    stdout, stderr = proc.communicate(timeout=self.timeout)
+                    timed_out = False
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    stdout, stderr = proc.communicate()
+                    timed_out = True
+
+            if timed_out:
+                return SandboxResult(
+                    allowed=False, timed_out=True,
+                    output=(stdout or "")[:self.max_output_size],
+                    error=f"Timeout ({self.timeout}s) — proceso terminado",
+                    command=command,
+                )
+
+            output = (stdout or "")[:self.max_output_size]
+            error = (stderr or "")[:self.max_output_size]
+            if stdout and len(stdout) > self.max_output_size:
                 output += f"\n[... output truncated at {self.max_output_size} bytes ...]"
-            if len(result.stderr) > self.max_output_size:
+            if stderr and len(stderr) > self.max_output_size:
                 error += f"\n[... output truncated at {self.max_output_size} bytes ...]"
             return SandboxResult(
                 allowed=True,
@@ -346,20 +375,22 @@ class CommandSandbox:
                 error=error,
                 command=command,
             )
-        except subprocess.TimeoutExpired as e:
-            if os.name == 'posix':
-                try:
-                    pid = getattr(e, 'pid', None)
-                    if pid:
-                        os.killpg(os.getpgid(pid), signal.SIGKILL)
-                except (ProcessLookupError, PermissionError, OSError):
-                    pass
-            return SandboxResult(
-                allowed=False, timed_out=True,
-                error=f"Timeout ({self.timeout}s)", command=command,
-            )
         except Exception as e:
             return SandboxResult(allowed=False, error=str(e), command=command)
+
+    @staticmethod
+    def _kill_process_tree(proc: subprocess.Popen) -> None:
+        """Mata el process group completo (POSIX) o el proceso (Windows)."""
+        try:
+            if os.name == 'posix':
+                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+            else:
+                proc.kill()
+        except (ProcessLookupError, PermissionError, OSError):
+            try:
+                proc.kill()
+            except OSError:
+                pass
 
     # ── Logging ────────────────────────────────────────────────────────
 

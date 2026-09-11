@@ -1,5 +1,6 @@
-import pytest
 import subprocess
+
+import pytest
 
 try:
     import requests

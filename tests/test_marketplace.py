@@ -1,12 +1,11 @@
 """Tests for PluginMarketplace in specter.plugins.marketplace."""
 
-import os
 import tempfile
 from pathlib import Path
 
 import pytest
 
-from t100ai.plugins.marketplace import PluginMarketplace, PluginEntry, DEFAULT_REGISTRY_URL
+from t100ai.plugins.marketplace import DEFAULT_REGISTRY_URL, PluginEntry, PluginMarketplace
 
 
 @pytest.fixture

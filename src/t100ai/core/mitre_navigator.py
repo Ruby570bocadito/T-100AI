@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
-from .mitre import MitreFinding, MitreMapper, MitreTechnique, TacticCategory
+from .mitre import MitreFinding, MitreMapper
 
 SEVERITY_COLORS: dict[str, str] = {
     "CRIT": "#ff0000",
@@ -327,8 +327,8 @@ class MitreNavigatorExporter:
             "",
             "## Navigator Layer",
             "",
-            f"The following ATT&CK Navigator layer can be imported at",
-            f"https://mitre-attack.github.io/attack-navigator/",
+            "The following ATT&CK Navigator layer can be imported at",
+            "https://mitre-attack.github.io/attack-navigator/",
             "",
             "```json",
             json.dumps(layer, indent=2),

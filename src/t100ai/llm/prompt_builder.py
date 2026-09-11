@@ -8,7 +8,7 @@ in src/specter/llm/templates/ with fallback to hardcoded strings.
 """
 
 from pathlib import Path
-from typing import Dict, Optional, List
+from typing import Dict, List, Optional
 
 
 class PromptBuilder:

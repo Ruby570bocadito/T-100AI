@@ -1,123 +1,35 @@
-"""T-100AI CLI - Main Entry Point"""
+"""T-100AI CLI - Main Entry Point
+
+Terminal interactivo honesto: cada comando documentado en `markdown_help()`
+está cableado en t100ai.core.command_router.CommandRouter. Si un comando no
+está en la tabla del router, no existe y la ayuda no lo anuncia.
+"""
 
 import asyncio
-import platform
+import importlib.util
 import sys
+from pathlib import Path
 from typing import Optional
 
 import typer
 from rich.console import Console
-from rich.panel import Panel
-from rich.table import Table
-from rich.prompt import Prompt, Confirm
-from rich.syntax import Syntax
 from rich.markdown import Markdown
+from rich.panel import Panel
+from rich.prompt import Confirm
+from rich.table import Table
 
-from t100ai.core import T100AIEngine, Session
-from t100ai.core.permissions import PermissionManager, PermissionLevel
+from t100ai.core import Session, T100AIEngine
 from t100ai.utils.history import CommandHistory
-import os
-import re
-from pathlib import Path
 
-prompt_toolkit_available = False
-PromptSession = None
-Completer = object
+prompt_toolkit_available = importlib.util.find_spec("prompt_toolkit") is not None
+if prompt_toolkit_available:
+    from prompt_toolkit.completion import Completion
+else:
+    Completion = None
 
-try:
-    from prompt_toolkit import PromptSession
-    from prompt_toolkit.completion import Completer, Completion
-    prompt_toolkit_available = True
-except ImportError:
-    pass
+if sys.stdout.encoding != "utf-8":
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-
-class ContextAwareCompleter:
-    """Autocompletado inteligente con contexto"""
-    
-    CONTEXT_SUGGESTIONS = {
-        "ip": ["nmap", "ping", "rustscan", "masscan"],
-        "domain": ["whois", "dig", "nslookup", "subfinder"],
-        "url": ["gobuster", "sqlmap", "nikto", "nuclei", "ffuf"],
-        "port": ["nmap -p", "netstat"],
-        "hash": ["hashid", "hashcat", "john"],
-        "cve": ["searchsploit", "nuclei"],
-        "email": ["theHarvester", "hunter", "emailrep"],
-    }
-    
-    def __init__(self, session: Optional["Session"] = None, engine: Optional["T100AIEngine"] = None):
-        self.session = session
-        self.engine = engine
-    
-    def get_completions(self, document, complete_event):
-        text = document.text_before_cursor
-        if not text:
-            return
-        
-        parts = text.split()
-        if len(parts) == 1:
-            last = parts[0]
-            if last.startswith("/"):
-                for cmd in self._get_context_commands():
-                    if cmd.startswith(last[1:]):
-                        yield Completion(f"/{cmd}", start_position=-len(last))
-            elif not last.startswith("/"):
-                natural_suggestions = self._get_natural_suggestions()
-                for suggestion in natural_suggestions:
-                    if suggestion.startswith(last.lower()):
-                        yield Completion(suggestion, start_position=-len(last))
-        elif len(parts) > 1:
-            cmd = parts[0]
-            if cmd in ("/scope", "scope") and "set" in parts:
-                target = parts[-1] if parts[-1] != "set" else ""
-                yield Completion(f"/scope set {target}")
-            elif cmd == "/history":
-                query = " ".join(parts[1:])
-                for item in command_history.search(query):
-                    yield Completion(item, start_position=-len(text))
-    
-    def _get_context_commands(self) -> list:
-        commands = [
-            "help", "scope", "role", "skills", "skill", "tools", "tool",
-            "findings", "finding", "report", "workflow", "mode", "model",
-            "context", "session", "log", "clear", "exit", "history"
-        ]
-        if self.session:
-            if self.session.scope:
-                commands.extend(["nmap", "scan"])
-            if self.session.current_skill:
-                commands.append(f"/skill {self.session.current_skill}")
-        return sorted(set(commands))
-    
-    def _get_natural_suggestions(self) -> list:
-        suggestions = []
-        if self.session and self.session.scope:
-            for entry in self.session.scope:
-                target = entry.target
-                if entry.type == "ip" or re.match(r"\d+\.\d+\.\d+\.\d+", target):
-                    suggestions.extend([f"escanea {target}", f"nmap {target}"])
-                elif entry.type == "domain":
-                    suggestions.extend([f"enumera DNS de {target}", f"whois {target}"])
-        suggestions.extend([
-            "escanea puertos", "busca vulnerabilidades", "genera informe",
-            "muestra hallazgos", "modifica scope"
-        ])
-        if self.engine and hasattr(self.engine, 'skill_manager'):
-            parallel_tasks = self.engine.skill_manager.detect_parallel_tasks("")
-            if parallel_tasks:
-                suggestions.append("ejecutar todo en paralelo")
-        return suggestions
-    
-    def update_context(self, session, engine) -> None:
-        self.session = session
-        self.engine = engine
-
-# NOTE: prompt_toolkit requires proper async context to avoid coroutine warnings.
-# For now, we use the standard input() function which works reliably across all platforms.
-from t100ai.core.config import T100AIConfig
-import sys
-if sys.stdout.encoding != 'utf-8':
-    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 console = Console(force_terminal=True, file=sys.stdout)
 
 # Persistent command history
@@ -130,8 +42,63 @@ app = typer.Typer(
     invoke_without_command=True,
 )
 
+VERSION = "0.2.0"
 
-def _apply_config_and_confirm(cfg: T100AIConfig, config_path: Optional[str], debug: bool, model: Optional[str], no_llm: bool) -> T100AIConfig:
+
+class ContextAwareCompleter:
+    """Autocompletado de comandos del sistema y nombres descubiertos."""
+
+    def __init__(self, session: Optional["Session"] = None, engine: Optional["T100AIEngine"] = None):
+        self.session = session
+        self.engine = engine
+
+    def get_completions(self, document, complete_event):
+        text = document.text_before_cursor
+        if not text:
+            return
+
+        parts = text.split()
+        if len(parts) == 1:
+            last = parts[0]
+            pool = set(_system_command_list())
+            if last.startswith("/"):
+                for cmd in pool:
+                    if cmd.startswith(last[1:]):
+                        yield Completion(f"/{cmd}", start_position=-len(last))
+            else:
+                names = _discover_names()
+                for suggestion in (
+                    names.get("tools", []) + names.get("skills", []) + names.get("workflows", [])
+                ):
+                    if suggestion.startswith(last.lower()):
+                        yield Completion(suggestion, start_position=-len(last))
+
+    def update_context(self, session, engine) -> None:
+        self.session = session
+        self.engine = engine
+
+
+# NOTE: prompt_toolkit requiere contexto async correcto; el REPL usa input()
+# estándar que funciona de forma fiable en todas las plataformas.
+from t100ai.core.config import T100AIConfig  # noqa: E402
+
+
+def _confirm_ethical_use() -> None:
+    """Gate de uso ético. Obligatorio antes de cualquier operación."""
+    if not Confirm.ask(
+        "[yellow]!! CONFIRMACION DE USO ETICO !!\n"
+        "Este software esta disenado exclusivamente para uso profesional etico autorizado.\n"
+        "Solo debe usarse en sistemas donde tengas autorizacion explicita.\n\n"
+        "Confirmas que tienes autorizacion para operar en estos sistemas?",
+        default=False,
+    ):
+        console.print("[red]Operacion cancelada. T-100AI requiere autorizacion expliita.[/]")
+        raise typer.Exit(code=1)
+
+
+def _apply_config_and_confirm(
+    config_path: Optional[str], debug: bool, model: Optional[str], no_llm: bool
+) -> T100AIConfig:
     """Load config, apply CLI overrides, and confirm ethical use."""
     cfg = T100AIConfig.load(config_path=config_path)
     if debug:
@@ -143,36 +110,26 @@ def _apply_config_and_confirm(cfg: T100AIConfig, config_path: Optional[str], deb
         console.print("[yellow]Modo sin LLM activado[/]")
 
     sys.stdout.flush()
-
-    if not Confirm.ask(
-        "[yellow]!! CONFIRMACION DE USO ETICO !!\n"
-        "Este software esta disenado exclusivamente para uso profesional etico autorizado.\n"
-        "Solo debe usarse en sistemas donde tengas autorizacion explicita.\n\n"
-        "Confirmas que tienes autorizacion para operar en estos sistemas?",
-        default=False
-    ):
-        console.print("[red]Operacion cancelada. T-100AI requiere autorizacion expliita.[/]")
-        raise typer.Exit(code=1)
-
+    _confirm_ethical_use()
     return cfg
 
 
-@app.callback()
+@app.callback(invoke_without_command=True)
 def cli_callback(
     ctx: typer.Context,
-    model: Optional[str] = typer.Option(None, "--model", "-m", help="Modelo Ollama (ej: devstral-small-2:latest)"),
+    model: Optional[str] = typer.Option(None, "--model", "-m", help="Modelo Ollama (ej: mistral:7b)"),
     config: Optional[str] = typer.Option(None, "--config", "-c", help="Ruta a config.toml"),
     debug: bool = typer.Option(False, "--debug", "-d", help="Modo debug"),
     no_llm: bool = typer.Option(False, "--no-llm", help="Modo sin LLM"),
     scope: Optional[str] = typer.Option(None, "--scope", "-s", help="Objetivo inicial (IP/dominio)"),
 ) -> None:
-    """T-100AI - AI-Powered Offensive Security Terminal
+    """T-100AI - AI-Powered Offensive Security Terminal.
 
-Usa: python -m t100ai.cli.main --help
+    Sin subcomando arranca el terminal interactivo.
     """
     if ctx.invoked_subcommand is None:
         show_banner()
-        cfg = _apply_config_and_confirm(T100AIConfig(), config, debug, model, no_llm)
+        cfg = _apply_config_and_confirm(config, debug, model, no_llm)
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         loop.run_until_complete(run_t100ai(cfg, scope))
@@ -180,24 +137,22 @@ Usa: python -m t100ai.cli.main --help
 
 @app.command("main")
 def main_entry(
-    model: Optional[str] = typer.Option(None, "--model", "-m", help="Modelo Ollama (ej: devstral-small-2:latest)"),
+    model: Optional[str] = typer.Option(None, "--model", "-m", help="Modelo Ollama (ej: mistral:7b)"),
     config: Optional[str] = typer.Option(None, "--config", "-c", help="Ruta a config.toml"),
     debug: bool = typer.Option(False, "--debug", "-d", help="Modo debug"),
     no_llm: bool = typer.Option(False, "--no-llm", help="Modo sin LLM"),
     scope: Optional[str] = typer.Option(None, "--scope", "-s", help="Objetivo inicial (IP/dominio)"),
 ) -> None:
-    """Inicia T-100AI - AI-Powered Offensive Security Terminal
+    """Inicia el terminal interactivo de T-100AI.
 
-Ejemplos:
-  python -m t100ai.cli.main
-  python -m t100ai.cli.main -s 192.168.1.1
-  python -m t100ai.cli.main -m llama3.2 -s example.com
-  python -m t100ai.cli.main --no-llm
-
-Comandos: /scope, /role, /skills, /tools, /wordlist, /agent, /read, /finding, /report, /mode, /help, /clear
+    Ejemplos:
+      python -m t100ai.cli.main
+      python -m t100ai.cli.main -s 192.168.1.1
+      python -m t100ai.cli.main -m llama3.2 -s example.com
+      python -m t100ai.cli.main --no-llm
     """
     show_banner()
-    cfg = _apply_config_and_confirm(T100AIConfig(), config, debug, model, no_llm)
+    cfg = _apply_config_and_confirm(config, debug, model, no_llm)
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     loop.run_until_complete(run_t100ai(cfg, scope))
@@ -213,132 +168,116 @@ def _system_command_list() -> list[str]:
 
 def _discover_names() -> dict:
     """Discover tool/skill/workflow names from the filesystem when available."""
-    names = {"tools": [], "skills": [], "workflows": []}
+    names: dict[str, list] = {"tools": [], "skills": [], "workflows": []}
     t100ai_root = Path(__file__).resolve().parent.parent
-    # Tools
-    for p in [t100ai_root / "tools"]:
+    for key, sub in (("tools", "tools"), ("skills", "skills"), ("workflows", "workflows")):
+        p = t100ai_root / sub
         if p.exists():
-            for child in p.iterdir():
+            for child in sorted(p.iterdir()):
                 if child.is_dir():
-                    names["tools"].append(child.name)
-                elif child.is_file():
-                    names["tools"].append(child.stem)
-            break
-    # Skills
-    for p in [t100ai_root / "skills"]:
-        if p.exists():
-            for child in p.iterdir():
-                if child.is_dir():
-                    names["skills"].append(child.name)
-                elif child.is_file():
-                    names["skills"].append(child.stem)
-            break
-    # Workflows
-    for p in [t100ai_root / "workflows"]:
-        if p.exists():
-            for child in p.iterdir():
-                if child.is_file():
-                    names["workflows"].append(child.stem)
-            break
+                    names[key].append(child.name)
+                elif child.is_file() and child.suffix == ".py":
+                    names[key].append(child.stem)
     return names
 
 
 def _show_help() -> None:
     """Display comprehensive help with all commands."""
-    help_md = markdown_help()
-    console.print(Markdown(help_md))
+    console.print(Markdown(markdown_help()))
 
 
 def markdown_help() -> str:
-    return """
+    """Ayuda honesta: exactamente los comandos que CommandRouter soporta."""
+    return f"""
 # ◈ T-100AI — Ayuda de Comandos
 
-**T-100AI** · AI-Powered Offensive Security Terminal · *Unseen. Unconstrained. Unstoppable.*
+**T-100AI** · AI-Powered Offensive Security Terminal · v{VERSION}
 
 ---
 
 ## SESIÓN Y ALCANCE
 | Comando | Descripción |
 |---|---|
-| `/session new [nombre]` | Iniciar nueva sesión de operación |
-| `/session load [id]` | Cargar sesión guardada |
-| `/session export` | Exportar sesión actual |
+| `/session` | Información de la sesión actual |
 | `/scope set [ip/cidr/domain]` | Definir el scope de la operación |
 | `/scope show` | Mostrar scope actual |
 | `/scope clear` | Limpiar scope |
+| `/save [archivo]` | Guardar código/hallazgos de la sesión |
 
-## ROLES DEL OPERADOR
+## ROLES Y MODOS
 | Comando | Descripción |
 |---|---|
 | `/role set [nombre]` | Cambiar rol activo |
-| `/role show` | Mostrar rol actual y skills activos |
-| `/role list` | Listar todos los roles disponibles |
+| `/role show` | Mostrar rol actual |
+| `/role list` | Listar roles disponibles |
+| `/mode paranoid` | Confirmación en TODAS las acciones |
+| `/mode standard` | Modo estándar (por defecto) |
+| `/mode expert` | Auto-ejecución sin confirmaciones |
 
 Roles disponibles: `pentester` · `red-teamer` · `blue-teamer` · `ctf-player` · `forensic`
 
-## SKILLS
+## SKILLS Y HERRAMIENTAS
 | Comando | Descripción |
 |---|---|
-| `/skill use [nombre]` | Activar skill específico |
 | `/skill list` | Listar skills disponibles |
+| `/skill use [nombre]` | Activar skill específico |
 | `/skill info [nombre]` | Info detallada de un skill |
+| `/tools` | Listar herramientas MCP disponibles |
 
 Skills: `recon` · `osint` · `web` · `exploit` · `postex` · `forense` · `ad` · `report`
-
-## HERRAMIENTAS
-| Comando | Descripción |
-|---|---|
-| `/tool run [herramienta] [args]` | Ejecutar herramienta directamente |
-| `/tool list` | Listar herramientas disponibles |
-
-## WORKFLOWS
-| Comando | Descripción |
-|---|---|
-| `/workflow run [nombre]` | Ejecutar workflow completo |
-| `/workflow list` | Listar workflows disponibles |
-| `/workflow status` | Estado del workflow en curso |
-
-Workflows: `full_pentest` · `web_audit` · `ir_response` · `ad_attack` · `quick_scan` · `report_gen`
 
 ## MODELO DE IA
 | Comando | Descripción |
 |---|---|
-| `/model switch [nombre]` | Cambiar modelo Ollama |
 | `/model info` | Info del modelo activo |
-| `/context show` | Ver historial conversacional en memoria |
-| `/context clear` | Limpiar historial (mantiene hallazgos) |
+| `/model switch [nombre]` | Cambiar modelo Ollama |
+| `/model list` | Listar modelos instalados en Ollama |
 
 ## HALLAZGOS
 | Comando | Descripción |
 |---|---|
 | `/findings show` | Ver todos los hallazgos registrados |
-| `/findings add [descripción]` | Añadir hallazgo manual |
-| `/finding score [id] [cvss]` | Asignar score CVSS a un hallazgo |
+| `/findings add [sev] [título]` | Añadir hallazgo manual (ej: `HIGH MySQL expuesto`) |
+| `/findings score [id] [cvss]` | Asignar score CVSS a un hallazgo |
 
-## REPORTS
+## REPORTES Y LOGS
 | Comando | Descripción |
 |---|---|
-| `/report generate` | Generar informe final |
+| `/report generate` | Generar informe final (markdown) |
 | `/report preview` | Vista previa del informe |
-| `/report export [format]` | Exportar (md/html/pdf) |
+| `/report session` | Resumen de la sesión |
+| `/report export [formato]` | Exportar informe |
+| `/log show` | Ver log de acciones de sesión |
+| `/log export` | Exportar log completo |
 
-## PERMISOS
+## CONTEXTO Y HISTORIAL
 | Comando | Descripción |
 |---|---|
-| `/mode paranoid` | Confirmación en TODAS las acciones |
-| `/mode standard` | Modo estándar (por defecto) |
-| `/mode expert` | Auto-ejecución sin confirmaciones |
+| `/context show` | Ver historial conversacional en memoria |
+| `/context clear` | Limpiar historial (mantiene hallazgos) |
+| `/history [query]` | Historial de comandos del terminal |
+| `/perf` | Estadísticas de rendimiento |
+
+## AGENTES, WORKFLOWS Y PLUGINS
+| Comando | Descripción |
+|---|---|
+| `/agent list` | Listar agentes disponibles |
+| `/agent spawn [tarea]` | Desplegar tarea en un agente |
+| `/agent status` | Estado del orquestador |
+| `/workflow list` | Listar workflows disponibles |
+| `/workflow run [nombre]` | Ejecutar workflow completo |
+| `/workflow status` | Estado del workflow en curso |
+| `/deploy task [desc]` | Desplegar tarea al orquestador |
+| `/plugin list` | Listar plugins |
+| `/plugin search [query]` | Buscar plugins |
+| `/plugin install [nombre]` | Instalar plugin |
 
 ## UTILIDADES
 | Comando | Descripción |
 |---|---|
+| `/wordlist dir|subdomain|user|pass|sql|xss|lfi|cve` | Wordlists integradas |
+| `/read [archivo]` | Leer un archivo y mostrarlo |
 | `help` / `/help` | Mostrar esta ayuda |
-| `/log show` | Ver log de acciones de sesión |
-| `/log export` | Exportar log completo a JSON |
-| `/context show` | Ver historial conversacional en memoria |
-| `/context clear` | Limpiar historial (mantiene hallazgos) |
-| `/model info` | Ver modelo LLM activo y host |
-| `/history` | Historial de comandos del terminal |
 | `/clear` | Limpiar pantalla |
 | `exit` / `quit` | Cerrar T-100AI |
 
@@ -354,6 +293,7 @@ El LLM puede ejecutar comandos reales usando la sintaxis:
 
 Se pedirá confirmación antes de ejecutar cada comando (excepto en modo `expert`).
 El output se analiza automáticamente y el LLM propone los siguientes pasos.
+El sandbox valida scope, rate-limit y bloquea comandos destructivos.
 
 ---
 
@@ -370,9 +310,8 @@ inicia un pentest completo contra 10.0.0.0/24
 """
 
 
-
 # ─────────────────────────────────────────────────────────────────────────────
-# Paleta de Colores T-100AI con ANSI extendido
+# Paleta de Colores T-100AI
 # ─────────────────────────────────────────────────────────────────────────────
 class T100AI_COLORS:
     """Paleta de colores del tema T-100AI"""
@@ -383,7 +322,7 @@ class T100AI_COLORS:
     ORANGE_HIGH = "#FF6B35"
     YELLOW_MEDIUM = "#FFD60A"
     GRAY_MUTED = "#8B949E"
-    
+
     SEVERITY_COLORS = {
         "CRIT": RED_CRITICAL,
         "HIGH": ORANGE_HIGH,
@@ -391,21 +330,19 @@ class T100AI_COLORS:
         "LOW": GREEN_PRIMARY,
         "INFO": GRAY_MUTED,
     }
-    
+
     @classmethod
     def get_severity_color(cls, severity: str) -> str:
         return cls.SEVERITY_COLORS.get(severity.upper(), cls.GRAY_MUTED)
 
 
 class ANSIColors:
-    """Códigos ANSI extendidos para terminal"""
+    """Códigos ANSI para terminal"""
+
     RESET = "\033[0m"
     BOLD = "\033[1m"
     DIM = "\033[2m"
-    ITALIC = "\033[3m"
-    UNDERLINE = "\033[4m"
-    
-    BLACK = "\033[30m"
+
     RED = "\033[31m"
     GREEN = "\033[32m"
     YELLOW = "\033[33m"
@@ -413,45 +350,31 @@ class ANSIColors:
     MAGENTA = "\033[35m"
     CYAN = "\033[36m"
     WHITE = "\033[37m"
-    
-    BG_BLACK = "\033[40m"
-    BG_RED = "\033[41m"
-    BG_GREEN = "\033[42m"
-    BG_YELLOW = "\033[43m"
-    BG_BLUE = "\033[44m"
-    BG_MAGENTA = "\033[45m"
-    BG_CYAN = "\033[46m"
-    BG_WHITE = "\033[47m"
-    
+
     BRIGHT_BLACK = "\033[90m"
-    BRIGHT_RED = "\033[91m"
     BRIGHT_GREEN = "\033[92m"
-    BRIGHT_YELLOW = "\033[93m"
-    BRIGHT_BLUE = "\033[94m"
-    BRIGHT_MAGENTA = "\033[95m"
     BRIGHT_CYAN = "\033[96m"
-    BRIGHT_WHITE = "\033[97m"
-    
+
     @classmethod
     def rgb(cls, r: int, g: int, b: int) -> str:
         return f"\033[38;2;{r};{g};{b}m"
-    
+
     @classmethod
     def bg_rgb(cls, r: int, g: int, b: int) -> str:
         return f"\033[48;2;{r};{g};{b}m"
-    
+
     @classmethod
     def cursor_hide(cls) -> str:
         return "\033[?25l"
-    
+
     @classmethod
     def cursor_show(cls) -> str:
         return "\033[?25h"
-    
+
     @classmethod
     def clear_screen(cls) -> str:
         return "\033[2J\033[H"
-    
+
     @classmethod
     def clear_line(cls) -> str:
         return "\033[2K"
@@ -459,11 +382,11 @@ class ANSIColors:
 
 class KeyboardShortcuts:
     """Keyboard shortcuts support"""
-    
+
     CTRL_C = "\x03"
     CTRL_L = "\x0c"
     CTRL_D = "\x04"
-    
+
     @staticmethod
     def handle_input(char: str, console) -> bool:
         """Procesa atajos de teclado. Retorna True si se manejó."""
@@ -476,66 +399,16 @@ class KeyboardShortcuts:
         return False
 
 
-def _get_input_with_esc() -> Optional[str]:
-    """Lee input del usuario detectando Esc para cancelar"""
-    try:
-        import sys
-        import os
-        
-        if sys.platform == "win32":
-            import msvcrt
-            
-            buffer = ""
-            while True:
-                if msvcrt.kbhit():
-                    char = msvcrt.getch()
-                    if char == b'\x1b':
-                        return None
-                    if char == b'\r':
-                        print()
-                        return buffer
-                    if char == b'\x08':
-                        if buffer:
-                            buffer = buffer[:-1]
-                            sys.stdout.write('\b \b')
-                            sys.stdout.flush()
-                    else:
-                        try:
-                            buffer += char.decode('utf-8')
-                            sys.stdout.write(char.decode('utf-8'))
-                            sys.stdout.flush()
-                        except:
-                            pass
-        else:
-            import select
-            import tty
-            import termios
-            
-            old_settings = termios.tcgetattr(sys.stdin)
-            try:
-                tty.setcbreak(sys.stdin.fileno())
-                if select.select([sys.stdin], [], [], 0.1)[0]:
-                    char = sys.stdin.read(1)
-                    if char == '\x1b':
-                        return None
-                return input()
-            finally:
-                termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
-    except:
-        return input()
-
-
 def get_enhanced_prompt(session, config) -> str:
     """Genera prompt mejorado con colores ANSI"""
     role_tag = f"|{session.role.name}|" if session.role else ""
     model_tag = config.ollama_model
-    
+
     cyan = ANSIColors.CYAN
-    green = ANSIColors.BRIGHT_GREEN
+    green = ANSIColors.GREEN
     gray = ANSIColors.BRIGHT_BLACK
-    bold = ANSIColors.BOLD
     reset = ANSIColors.RESET
-    
+
     return (
         f"\n{green}⟩{reset} "
         f"{gray}[{reset}"
@@ -579,32 +452,16 @@ def show_banner() -> None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Comandos
+# REPL
 # ─────────────────────────────────────────────────────────────────────────────
-def _create_and_run_event_loop(coro):
-    """Create a new event loop for Windows compatibility."""
-    import asyncio
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        return loop.run_until_complete(coro)
-    finally:
-        loop.close()
-
-
-# Console with cross-platform support
-
-
 async def run_t100ai(cfg: T100AIConfig, initial_scope: Optional[str] = None) -> None:
     """Ejecuta la sesión principal de T-100AI"""
-    from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
-
     session = Session()
     session.set_config(cfg)
-    
+
     if initial_scope:
         session.add_to_scope(initial_scope)
-    
+
     engine = T100AIEngine(session=session, config=cfg)
 
     print("Inicializando motor T-100AI...")
@@ -613,9 +470,6 @@ async def run_t100ai(cfg: T100AIConfig, initial_scope: Optional[str] = None) -> 
 
     if initial_scope:
         print(f"Scope: {initial_scope}")
-
-    # Initialize permission manager for interactive confirmations
-    permission_manager = PermissionManager(current_level=PermissionLevel.OBSERVATION)
 
     console.print(Panel.fit(
         "[#00FF88]T-100AI iniciado correctamente[/]\n"
@@ -628,43 +482,7 @@ async def run_t100ai(cfg: T100AIConfig, initial_scope: Optional[str] = None) -> 
 
     console.print("\n[#8B949E]Escribe 'help' para ver comandos disponibles o 'exit' para salir.[/]\n")
     sys.stdout.flush()
-    
-    # Autocompletado opcional con prompt_toolkit (si está disponible)
-    completer = None
-    prompt_session = None
-    if prompt_toolkit_available:
-        try:
-            from prompt_toolkit.completion import Completion
-            
-            class SystemCompleter(Completer if prompt_toolkit_available else object):
-                def __init__(self, ctx_completer):
-                    self.ctx = ctx_completer
-                
-                def get_completions(self, document, complete_event):
-                    text = document.text_before_cursor
-                    if not text:
-                        for c in _system_command_list():
-                            yield Completion(c, start_position=0)
-                        return
-                    last = text.split()[-1]
-                    pool = set(_system_command_list())
-                    names = _discover_names()
-                    for t in names.get("tools", []):
-                        pool.add(f"tool run {t}")
-                    for s in names.get("skills", []):
-                        pool.add(f"skill use {s}")
-                    for w in names.get("workflows", []):
-                        pool.add(f"workflow run {w}")
-                    for item in sorted(pool):
-                        if item.startswith(last):
-                            yield Completion(item, start_position=-len(last))
-            
-            ctx_completer = ContextAwareCompleter(session=session, engine=engine)
-            completer = SystemCompleter(ctx_completer)
-            prompt_session = PromptSession(completer=completer)
-        except Exception:
-            pass
-    
+
     # Loop principal
     consecutive_cancel = 0
     while True:
@@ -681,15 +499,15 @@ async def run_t100ai(cfg: T100AIConfig, initial_scope: Optional[str] = None) -> 
             except EOFError:
                 console.print("\n[yellow]Entrada cerrada.[/]")
                 break
-            
+
             consecutive_cancel = 0
-            
+
             if not user_input or not user_input.strip():
                 continue
-            
+
             if user_input.lower() in ("exit", "quit", "salir"):
                 break
-            
+
             command_history.add(user_input, session_id=session.id)
 
             if user_input.strip() in ("/help", "help"):
@@ -702,7 +520,7 @@ async def run_t100ai(cfg: T100AIConfig, initial_scope: Optional[str] = None) -> 
 
             was_interactive = engine.interactive_mode
             engine.interactive_mode = False
-            
+
             if was_interactive:
                 await engine.process_interactive_input(user_input)
             else:
@@ -727,7 +545,7 @@ async def run_t100ai(cfg: T100AIConfig, initial_scope: Optional[str] = None) -> 
 @app.command()
 def version() -> None:
     """Muestra la versión de T-100AI"""
-    console.print("[#00FF88]T-100AI v0.1.0[/]")
+    console.print(f"[#00FF88]T-100AI v{VERSION}[/]")
     console.print("[#8B949E]AI-Powered Offensive Security Terminal[/]")
 
 
@@ -738,12 +556,12 @@ def info() -> None:
     table.add_column("Componente", style="#00D4FF")
     table.add_column("Estado", style="#00FF88")
     table.add_column("Detalles", style="#8B949E")
-    
-    table.add_row("Version", "[OK]", "0.1.0")
+
+    table.add_row("Version", "[OK]", VERSION)
     table.add_row("Python", "[OK]", f"{sys.version.split()[0]}")
-    table.add_row("LLM", "[--]", "No conectado")
-    table.add_row("Herramientas", "[--]", "0 cargadas")
-    
+    table.add_row("LLM", "[--]", "No conectado (se conecta al iniciar sesion)")
+    table.add_row("Herramientas", "[--]", "Se descubren al iniciar sesion")
+
     console.print(table)
 
 

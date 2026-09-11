@@ -1,9 +1,9 @@
+import contextvars
+import datetime
 import json
 import logging
 import os
 import sys
-import datetime
-import contextvars
 from logging.handlers import RotatingFileHandler
 
 import structlog

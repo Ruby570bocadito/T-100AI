@@ -1,6 +1,7 @@
 """Tests for Command Router."""
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
-from unittest.mock import MagicMock, AsyncMock
 
 
 def _make_engine():

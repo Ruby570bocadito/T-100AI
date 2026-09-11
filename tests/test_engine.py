@@ -1,14 +1,13 @@
 """Tests for T-100AI core engine components."""
 
-import pytest
-from t100ai.core.config import T100AIConfig
-from t100ai.core.session import Session, Finding, ScopeEntry, MAX_HISTORY
-from t100ai.core.sandbox import CommandSandbox, SandboxResult
-from t100ai.core.guardrails import LLMCommandValidator
-from t100ai.core.permissions import PermissionManager, PermissionLevel
-from t100ai.core.mitre import MitreMapper, TECHNIQUE_DB
 from t100ai.core.audit import AuditLogger
-from wordlists.dictionaries import AttackDictionary
+from t100ai.core.config import T100AIConfig
+from t100ai.core.guardrails import LLMCommandValidator
+from t100ai.core.mitre import TECHNIQUE_DB, MitreMapper
+from t100ai.core.permissions import PermissionLevel, PermissionManager
+from t100ai.core.sandbox import CommandSandbox
+from t100ai.core.session import MAX_HISTORY, Finding, Session
+from t100ai.wordlists.dictionaries import AttackDictionary
 
 
 class TestConfig:

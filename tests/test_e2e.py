@@ -1,15 +1,15 @@
 """End-to-end integration tests for T-100AI."""
 import pytest
 
-from t100ai.core.session import Session, Finding
 from t100ai.core.config import T100AIConfig
-from t100ai.skills.base import SkillResult
-from t100ai.mcp.tool import MCPTool, ToolParameter
-from t100ai.mcp.registry import ToolRegistry
+from t100ai.core.session import Finding, Session
+from t100ai.llm.handler import LLMHandler
 from t100ai.mcp.executor import ToolExecutor
+from t100ai.mcp.registry import ToolRegistry
+from t100ai.mcp.tool import MCPTool, ToolParameter
+from t100ai.skills.base import SkillResult
 from t100ai.wordlists.dictionaries import AttackDictionary
 from t100ai.workflows.executor import WorkflowExecutor
-from t100ai.llm.handler import LLMHandler
 
 
 class TestE2EFullReconFlow:
@@ -69,7 +69,7 @@ class TestE2EToolExecution:
             command="echo",
         ))
 
-        executor = ToolExecutor(registry)
+        ToolExecutor(registry)  # debe instanciar sin error
         assert "test.echo" in registry.tools
 
 

@@ -5,8 +5,8 @@ import uuid
 from datetime import datetime
 from typing import List
 
-from t100ai.core.session_manager import SessionManager
 from t100ai.core.models import SessionData
+from t100ai.core.session_manager import SessionManager
 
 
 def _generate_session_id() -> str:

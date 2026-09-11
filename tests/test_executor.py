@@ -1,11 +1,10 @@
 """Comprehensive tests for ToolExecutor in specter.mcp.executor."""
 
-import asyncio
 import pytest
 
-from t100ai.mcp.executor import ToolExecutor, ExecutionResult
-from t100ai.mcp.tool import MCPTool, ToolParameter
+from t100ai.mcp.executor import ExecutionResult, ToolExecutor
 from t100ai.mcp.registry import ToolRegistry
+from t100ai.mcp.tool import MCPTool, ToolParameter
 from t100ai.wordlists.dictionaries import AttackDictionary
 
 
@@ -208,7 +207,7 @@ class TestExecutionHistory:
 
     @pytest.mark.asyncio
     async def test_history_after_valid_execution(self, executor):
-        result = await executor.execute("nmap", {"targets": "127.0.0.1"})
+        await executor.execute("nmap", {"targets": "127.0.0.1"})
         history = executor.get_execution_history()
         assert len(history) == 1
         assert isinstance(history[0], ExecutionResult)

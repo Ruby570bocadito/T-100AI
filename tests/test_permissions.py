@@ -1,6 +1,5 @@
-import pytest
 
-from t100ai.core.permissions import PermissionManager, PermissionLevel
+from t100ai.core.permissions import PermissionLevel, PermissionManager
 
 
 def test_permission_levels():

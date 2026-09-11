@@ -1,7 +1,7 @@
 [project]
 name = "t100ai"
-version = "0.1.0"
-description = "T-100AI - AI-Powered Offensive Security Terminal"
+version = "0.2.0"
+description = "T-100AI - AI-Powered Offensive Security Terminal (offline, local LLM, human-in-the-loop)"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
@@ -69,14 +69,7 @@ exclude = ["__pycache__/", "*.pyc"]
 [tool.ruff.lint]
 select = ["E", "F", "W", "I"]
 ignore = [
-    "F841",  # unused variable
-    "F401",  # unused import
-    "F821",  # undefined name (pre-existing TYPE_CHECKING issues)
-    "E402",  # module level import not at top
-    "E501",  # line too long
-    "E722",  # bare except
-    "W293",  # blank line contains whitespace
-    "F811",  # redefined unused
+    "E501",  # line too long (line-length configurado a 120)
 ]
 
 [tool.mypy]

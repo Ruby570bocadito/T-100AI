@@ -1,5 +1,7 @@
 """Diccionarios integrados para pentesting, CTF y auditoria."""
 
+from datetime import datetime
+
 
 class AttackDictionary:
     """
@@ -168,6 +170,8 @@ class AttackDictionary:
     # ── LFI payloads ───────────────────────────────────────────────────
     _LFI_PAYLOADS = [
         "/etc/passwd",
+        "../../../etc/passwd",
+        "../../../../etc/passwd",
         "/etc/shadow",
         "/etc/hosts",
         "/etc/group",
@@ -264,3 +268,27 @@ class AttackDictionary:
 
     def stats(self) -> dict[str, int]:
         return {k: len(v) for k, v in self.get_all().items()}
+
+    def generate_password_mutations(self, base: str) -> list[str]:
+        """Genera mutaciones típicas de contraseña a partir de una base.
+
+        Utilidad de auditoría defensiva: variantes predecibles (año actual,
+        sufijos comunes, leet básico) para audits de contraseñas autorizados.
+        """
+        if not base:
+            return []
+        year = str(datetime.now().year)
+        mutations = [
+            base,
+            base.capitalize(),
+            base.upper(),
+            base.lower(),
+            base + "123",
+            base + "123!",
+            base + "!",
+            base + year,
+            base + year + "!",
+            base[0].upper() + base[1:] + "1",
+            base.replace("a", "@").replace("e", "3").replace("i", "1").replace("o", "0"),
+        ]
+        return sorted(set(mutations))

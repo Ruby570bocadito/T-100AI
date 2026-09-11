@@ -1,7 +1,7 @@
 import pytest
 
 from t100ai.mcp.registry import ToolRegistry
-from t100ai.mcp.tool import MCPTool, ToolParameter
+from t100ai.mcp.tool import MCPTool
 
 
 def test_tool_registry_creation():

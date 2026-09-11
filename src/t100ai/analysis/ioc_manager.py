@@ -94,23 +94,23 @@ class IoCManager:
         extracted = []
         for match in self._IP_RE.findall(text):
             if match not in self._iocs:
-                ioc = self.add_ioc(match, "ip", f"IP found in output", source="auto-extract")
+                ioc = self.add_ioc(match, "ip", "IP found in output", source="auto-extract")
                 extracted.append(ioc)
         for match in self._DOMAIN_RE.findall(text):
             if match not in self._iocs and "." in match:
-                ioc = self.add_ioc(match, "domain", f"Domain found in output", source="auto-extract")
+                ioc = self.add_ioc(match, "domain", "Domain found in output", source="auto-extract")
                 extracted.append(ioc)
         for match in self._HASH_SHA256.findall(text):
             if match not in self._iocs:
-                ioc = self.add_ioc(match, "hash", f"SHA256 hash found", source="auto-extract")
+                ioc = self.add_ioc(match, "hash", "SHA256 hash found", source="auto-extract")
                 extracted.append(ioc)
         for match in self._EMAIL_RE.findall(text):
             if match not in self._iocs:
-                ioc = self.add_ioc(match, "email", f"Email found", source="auto-extract")
+                ioc = self.add_ioc(match, "email", "Email found", source="auto-extract")
                 extracted.append(ioc)
         for match in self._URL_RE.findall(text):
             if match not in self._iocs:
-                ioc = self.add_ioc(match, "url", f"URL found", source="auto-extract")
+                ioc = self.add_ioc(match, "url", "URL found", source="auto-extract")
                 extracted.append(ioc)
         return extracted
 

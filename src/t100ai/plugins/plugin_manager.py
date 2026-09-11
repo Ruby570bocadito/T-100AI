@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import importlib
 import importlib.util
 import json
@@ -29,14 +28,14 @@ except ImportError:
     raise ImportError("pydantic is required. Install with: pip install pydantic")
 
 try:
-    from watchdog.events import FileSystemEventHandler, FileSystemEvent
+    from watchdog.events import FileSystemEvent, FileSystemEventHandler
     from watchdog.observers import Observer
     WATCHDOG_AVAILABLE = True
 except ImportError:
     WATCHDOG_AVAILABLE = False
 
-from t100ai.core.sandbox import CommandSandbox, SandboxResult
 from t100ai.core.audit import AuditLogger
+from t100ai.core.sandbox import CommandSandbox, SandboxResult
 
 logger = logging.getLogger("t100ai.plugins")
 
@@ -231,8 +230,8 @@ class PluginSandbox:
         })
 
         try:
-            import urllib.request
             import urllib.error
+            import urllib.request
 
             req = urllib.request.Request(url, **kwargs)
             with urllib.request.urlopen(req, timeout=30) as resp:

@@ -1,8 +1,8 @@
 """Tests for Workflow Executor."""
 import pytest
 
-from t100ai.workflows.executor import WorkflowExecutor, WorkflowStep, WorkflowResult, StepStatus
 from t100ai.workflows.definitions import BUILTIN_WORKFLOWS
+from t100ai.workflows.executor import StepStatus, WorkflowExecutor, WorkflowResult, WorkflowStep
 
 
 class TestWorkflowExecutorCreation:

@@ -1,10 +1,8 @@
 """Tests for AD skill."""
 import asyncio
 
-import pytest
-
 from t100ai.skills.ad import AdSkill
-from t100ai.skills.base import SkillResult, RiskLevel
+from t100ai.skills.base import RiskLevel
 
 
 def test_ad_skill_creation():
