@@ -3,6 +3,20 @@
 Todos los cambios notables de T-100AI se documentan aquí.
 El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/).
 
+## [0.2.1] - 2026-09-12
+
+### Corregido
+- **`/session` crasheaba siempre** con `MarkupError`: tags rich malformados
+  (`[ #FF3366]` con espacio tras el corchete) en el panel de sesión, el
+  resumen de reporte y el resumen del executor. Corregidos los 6 tags en
+  3 ficheros. Detectado ejecutando el REPL en vivo durante la captura de
+  las imágenes del README.
+
+### Añadido
+- Capturas reales del terminal en `docs/captures/` (arranque, sesión,
+  resumen) + GIF animado de una sesión completa con `--no-llm`.
+- README: nueva sección "En acción" con las capturas.
+
 ## [0.2.0] - 2026-09-12
 
 ### Corregido

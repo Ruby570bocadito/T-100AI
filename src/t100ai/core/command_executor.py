@@ -827,8 +827,8 @@ Duración: [#00FF88]{self.session.duration}[/]
 Rol: [#FFD60A]{self.session.role.value if self.session.role else "Ninguno"}[/]
 
 [b]Hallazgos[/b]
-[ #FF3366]CRIT: {counts['CRIT']}[/]  [#FF6B35]HIGH: {counts['HIGH']}[/]
-[ #FFD60A]MED: {counts['MED']}[/]  [#00FF88]LOW: {counts['LOW']}[/]  [#8B949E]INFO: {counts['INFO']}[/]
+[#FF3366]CRIT: {counts['CRIT']}[/]  [#FF6B35]HIGH: {counts['HIGH']}[/]
+[#FFD60A]MED: {counts['MED']}[/]  [#00FF88]LOW: {counts['LOW']}[/]  [#8B949E]INFO: {counts['INFO']}[/]
 
 [b]Scope[/b]
 Objetivos: [#00D4FF]{len(self.session.scope)}[/]""",

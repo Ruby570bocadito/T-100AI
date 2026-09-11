@@ -73,6 +73,24 @@ Al arrancar se pide **confirmación de uso ético**; después, REPL:
 ⟩ [mistral:7b@t100ai] ▶ escanea los puertos de 10.0.0.5
 ```
 
+## En acción
+
+Arranque con gate de uso ético y panel de estado:
+
+![Arranque de T-100AI](docs/captures/startup.png)
+
+Skills, hallazgos con severidad y modos de permisos (sesión real con `--no-llm`):
+
+![Sesión: skills y hallazgos](docs/captures/session.png)
+
+GIF de la sesión completa — scope, skills, hallazgos, modo y ayuda:
+
+![Demo de sesión](docs/captures/demo.gif)
+
+Resumen de sesión generado desde datos reales (`/session`):
+
+![Resumen de sesión](docs/captures/session_info.png)
+
 ### Comandos (todos operativos, verificados en el router)
 
 | Grupo | Comandos |

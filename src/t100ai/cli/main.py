@@ -42,7 +42,7 @@ app = typer.Typer(
     invoke_without_command=True,
 )
 
-VERSION = "0.2.0"
+VERSION = "0.2.1"
 
 
 class ContextAwareCompleter:
