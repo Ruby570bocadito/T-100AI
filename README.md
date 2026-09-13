@@ -1,28 +1,28 @@
-# T-100AI — AI-Powered Offensive Security Terminal
+<div align="center">
 
-![CI](https://github.com/Ruby570bocadito/T-100AI/actions/workflows/ci.yml/badge.svg)
+<img src="docs/captures/banner.png" alt="T-100AI — AI-Powered Offensive Security Terminal" width="100%">
+
+[![CI](https://github.com/Ruby570bocadito/T-100AI/actions/workflows/ci.yml/badge.svg)](https://github.com/Ruby570bocadito/T-100AI/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python&logoColor=white)
 ![Tests](https://img.shields.io/badge/tests-461%20passing-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Offline](https://img.shields.io/badge/offline-100%25%20air--gapped-black)
 
-**T-100AI** es un terminal de operaciones ofensivas asistido por un LLM **100% local** (Ollama). Nada sale de tu máquina: sin telemetría, sin APIs en la nube, sin fugas. El modelo propone, un sandbox valida y **tú confirmas** cada comando antes de ejecutarlo.
+**Terminal de operaciones ofensivas asistido por un LLM 100% local (Ollama).**
+Nada sale de tu máquina: sin telemetría, sin APIs en la nube, sin fugas.
+El modelo propone, un sandbox valida y **tú confirmas** cada comando antes de ejecutarlo.
 
-> Diseñado para pentesting autorizado, laboratorios y CTF. Cada acción pasa por un gate de confirmación ética y por el sandbox antes de tocar el sistema.
+`pentesting autorizado` · `laboratorios` · `CTF` — cada acción pasa por un gate de confirmación ética y por el sandbox.
+
+[Instalación](#instalación) · [Uso](#uso) · [En acción](#en-acción) · [Arquitectura](#arquitectura) · [Changelog](CHANGELOG.md)
+
+</div>
 
 ---
 
 ## Cómo funciona
 
-```mermaid
-flowchart LR
-    U[Operador] -->|prompt o /comando| T[T-100AI]
-    T -->|contexto + intención| L[Ollama local]
-    L -->|propuesta &lt;cmd&gt;| S[Sandbox]
-    S -->|scope · rate-limit · blacklist| K[Herramientas]
-    K -->|output filtrado| T
-    T -->|análisis + hallazgos| U
-```
+![Pipeline de T-100AI](docs/captures/pipeline.png)
 
 1. **Propón** — escribes lenguaje natural (`escanea los puertos de 10.0.0.5`) o comandos slash (`/scope set 10.0.0.0/24`).
 2. **Decide el modelo** — el LLM local responde y puede proponer comandos con `<cmd>…</cmd>`.
@@ -51,11 +51,14 @@ flowchart LR
 ```bash
 git clone https://github.com/Ruby570bocadito/T-100AI.git
 cd T-100AI
-pip install -r requirements.txt        # o: pip install -e ".[dev]"
-ollama pull mistral:7b                 # modelo por defecto
+pip install -r requirements.txt        # 1) dependencias
+pip install -e .                       # 2) registra el paquete t100ai (comando `t100ai`)
+ollama pull mistral:7b                 # 3) modelo por defecto
 ```
 
-Lanzadores: `./run.sh` (Linux/macOS) · `run.bat` (Windows) · Docker: `docker compose up`.
+> **Windows:** también puedes arrancar directamente con `run.bat` — añade `src/` al
+> `PYTHONPATH` por ti, así `python -m t100ai.cli.main` funciona aunque no hayas hecho
+> el paso 2. En Linux/macOS: `./run.sh`. Docker: `docker compose up`.
 
 ## Uso
 
@@ -81,29 +84,27 @@ Al arrancar se pide **confirmación de uso ético**; después, REPL:
 
 ## En acción
 
-Arranque con gate de uso ético y panel de estado:
+Sesión completa — gate ético, scope, propuesta del modelo, validación del sandbox, confirmación humana, hallazgos con severidad y reporte:
 
-![Arranque de T-100AI](docs/captures/startup.png)
+![Demo de sesión T-100AI](docs/captures/demo.gif)
 
-Skills, hallazgos con severidad y modos de permisos (sesión real con `--no-llm`):
+| Arranque con gate ético | Skills, hallazgos y modos (`--no-llm`) |
+|:---:|:---:|
+| ![Arranque](docs/captures/startup.png) | ![Sesión](docs/captures/session.png) |
 
-![Sesión: skills y hallazgos](docs/captures/session.png)
+<details>
+<summary><b>Más capturas</b> — ayuda integrada, doctor y resumen de sesión</summary>
+<br>
 
-GIF de la sesión completa — scope, skills, hallazgos, modo y ayuda:
+| `/help` (fuente única con el router) | `t100ai doctor` (deps, config, sandbox, Ollama) |
+|:---:|:---:|
+| ![Ayuda integrada](docs/captures/help.png) | ![Doctor](docs/captures/doctor.png) |
 
-![Demo de sesión](docs/captures/demo.gif)
+| Resumen de sesión `/session` |
+|:---:|
+| ![Resumen de sesión](docs/captures/session_info.png) |
 
-Resumen de sesión generado desde datos reales (`/session`):
-
-![Resumen de sesión](docs/captures/session_info.png)
-
-Ayuda integrada (fuente única compartida con el router — no puede desincronizarse):
-
-![Ayuda integrada](docs/captures/help.png)
-
-Diagnóstico del entorno con `t100ai doctor` (deps, config, sandbox, Ollama):
-
-![Doctor](docs/captures/doctor.png)
+</details>
 
 ### Comandos (todos operativos, verificados en el router)
 
@@ -122,18 +123,7 @@ Diagnóstico del entorno con `t100ai doctor` (deps, config, sandbox, Ollama):
 
 ## Arquitectura
 
-```
-src/t100ai/
-├── cli/            # Typer + REPL (entrada honesta: help == router)
-├── core/           # engine, sandbox, command router, guardrails, sesiones
-├── llm/            # cliente Ollama, streaming, prompt builder, plantillas de rol
-├── mcp/            # registro de herramientas + executor + registry avanzado
-├── skills/         # recon, osint, web, postex, forense, ad, report
-├── agents/         # orquestador multi-agente
-├── workflows/      # executor + definiciones builtin
-├── analysis/       # attack graph, kill chain, CVSS, IoCs, custodia
-└── api/            # REST local (validación de Host, sin CORS abierto)
-```
+![Arquitectura de T-100AI](docs/captures/architecture.png)
 
 ## Seguridad y ética
 
@@ -154,7 +144,7 @@ CI en GitHub Actions: lint + tests en Python 3.10/3.11/3.12.
 
 ## Changelog
 
-Ver [CHANGELOG.md](CHANGELOG.md) — v0.3.0: CLI profesional (TAB-completion, historial persistente, sugerencias de comandos, `doctor`, `session`, ayuda unificada anti-drift) y rutas de datos en `~/.t100ai`.
+Ver [CHANGELOG.md](CHANGELOG.md) — v0.3.1: lanzadores `run.bat`/`run.sh` arreglados (PYTHONPATH automático, adiós al `ModuleNotFoundError`), limpieza de código muerto y documentación renovada con banner, GIF y diagramas nuevos.
 
 ## Licencia
 

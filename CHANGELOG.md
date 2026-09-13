@@ -3,6 +3,24 @@
 Todos los cambios notables de T-100AI se documentan aquí.
 El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/).
 
+## [0.3.1] - 2026-09-13
+
+### Corregido
+- **`run.bat` / `run.sh` fallaban con `ModuleNotFoundError: No module named 't100ai'`**
+  si solo se había hecho `pip install -r requirements.txt` (sin `pip install -e .`).
+  Ahora ambos lanzadores añaden `src/` al `PYTHONPATH` antes de ejecutar el módulo,
+  así el arranque funciona directamente tras clonar + instalar dependencias.
+
+### Eliminado
+- `src/t100ai/workflows_advanced.py` (532 líneas): módulo huérfano sin ninguna
+  importación en `src/` ni en `tests/` — código muerto del pre-rebrand.
+
+### Documentación
+- README renovado: banner propio, GIF de demostración regenerado con una sesión
+  completa del REPL (gate ético, scope, sandbox, hallazgos, reporte) y diagramas
+  compactos de pipeline y arquitectura. Las capturas grandes ahora van en tablas
+  y secciones plegables para que el README no sea interminable.
+
 ## [0.3.0] - 2026-09-12
 
 ### Corregido

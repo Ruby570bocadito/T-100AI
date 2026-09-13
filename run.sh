@@ -14,5 +14,8 @@ fi
 export LC_ALL=en_US.UTF-8 2>/dev/null || true
 export LANG=en_US.UTF-8 2>/dev/null || true
 
+# Asegurar que el paquete (src/) es importable sin necesidad de pip install -e .
+export PYTHONPATH="$SCRIPT_DIR/src:${PYTHONPATH:-}"
+
 # Ejecutar T-100AI
 python -m t100ai.cli.main "$@"

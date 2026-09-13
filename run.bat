@@ -13,6 +13,9 @@ if exist "venv\Scripts\activate.bat" (
 REM Configurar codificacion UTF-8 para PowerShell
 chcp 65001 >nul 2>&1
 
+REM Asegurar que el paquete (src/) es importable sin necesidad de pip install -e .
+set "PYTHONPATH=%~dp0src;%PYTHONPATH%"
+
 REM Ejecutar T-100AI
 python -m t100ai.cli.main %*
 
